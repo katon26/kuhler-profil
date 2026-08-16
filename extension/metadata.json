@@ -1,0 +1,16 @@
+{
+  "name": "KoolThing ASUS Power & Fan Control",
+  "description": "ASUS VivoBook thermal profiles, live fan RPM monitoring, battery health limiter, and governor automation",
+  "uuid": "koolthing@asus-linux.org",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50"
+  ],
+  "url": "https://github.com/asus-linux-drivers/koolthing",
+  "gettext-domain": "koolthing",
+  "version": 1
+}

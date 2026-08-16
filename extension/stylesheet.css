@@ -1,0 +1,121 @@
+/* KoolThing GNOME Shell Extension Stylesheet */
+
+.koolthing-menu-container {
+    padding: 6px 4px;
+    spacing: 10px;
+}
+
+.koolthing-section {
+    margin: 4px 6px;
+    spacing: 6px;
+}
+
+.koolthing-section-title {
+    font-size: 0.75em;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 2px;
+}
+
+/* Telemetry Dashboard Grid */
+.koolthing-telemetry-grid {
+    spacing: 6px;
+    margin: 4px 6px;
+}
+
+.koolthing-telemetry-row {
+    spacing: 6px;
+}
+
+.koolthing-metric-card {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 6px 10px;
+    spacing: 6px;
+}
+
+.koolthing-metric-label {
+    font-size: 0.8em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.koolthing-metric-value {
+    font-size: 0.95em;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+/* Button Groups for Thermal Modes and Battery Limits */
+.koolthing-button-group {
+    spacing: 6px;
+    margin: 2px 0px;
+}
+
+.koolthing-mode-button,
+.koolthing-battery-button {
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85em;
+    font-weight: 500;
+    color: #f0f0f0;
+    text-align: center;
+    transition-duration: 150ms;
+}
+
+.koolthing-mode-button:hover,
+.koolthing-battery-button:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+}
+
+.koolthing-mode-button:active,
+.koolthing-battery-button:active {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.koolthing-button-active {
+    background-color: #3584e4 !important;
+    border-color: #3584e4 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+.koolthing-button-active:hover {
+    background-color: #4a90e2 !important;
+}
+
+/* Auto Governor Item */
+.koolthing-governor-desc {
+    font-size: 0.78em;
+    color: rgba(255, 255, 255, 0.5);
+    margin-left: 12px;
+    margin-top: -4px;
+    margin-bottom: 6px;
+}
+
+/* Daemon Status Line */
+.koolthing-status-bar {
+    margin: 6px 8px 2px 8px;
+    spacing: 6px;
+}
+
+.koolthing-status-text {
+    font-size: 0.75em;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.koolthing-status-ok {
+    color: #57e389;
+}
+
+.koolthing-status-warn {
+    color: #f6d32d;
+}
+
+.koolthing-status-error {
+    color: #ed333b;
+}
