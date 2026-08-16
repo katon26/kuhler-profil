@@ -1,0 +1,17 @@
+[Unit]
+Description=KoolThing ASUS VivoBook Thermal, Fan & Battery Management Daemon
+After=dbus.service systemd-suspend.service
+Wants=dbus.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/koolthingd
+Restart=always
+RestartSec=3s
+KillMode=process
+CapabilityBoundingSet=CAP_SYS_ADMIN
+ProtectSystem=full
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target
