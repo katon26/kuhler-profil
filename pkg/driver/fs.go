@@ -254,9 +254,14 @@ type mockDirEntry struct {
 	size  int64
 }
 
-func (e *mockDirEntry) Name() string               { return e.name }
-func (e *mockDirEntry) IsDir() bool                { return e.isDir }
-func (e *mockDirEntry) Type() fs.FileMode          { if e.isDir { return fs.ModeDir }; return 0 }
+func (e *mockDirEntry) Name() string { return e.name }
+func (e *mockDirEntry) IsDir() bool  { return e.isDir }
+func (e *mockDirEntry) Type() fs.FileMode {
+	if e.isDir {
+		return fs.ModeDir
+	}
+	return 0
+}
 func (e *mockDirEntry) Info() (fs.FileInfo, error) {
 	mode := fs.FileMode(0644)
 	if e.isDir {
