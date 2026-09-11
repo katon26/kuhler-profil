@@ -13,6 +13,7 @@ type DriverCaps struct {
 	HasCPUTemp         bool   `json:"has_cpu_temp"`
 	HasFan1RPM         bool   `json:"has_fan1_rpm"`
 	HasFan2RPM         bool   `json:"has_fan2_rpm"`
+	HasHardwareFanCurve bool  `json:"has_hardware_fan_curve"`
 	ThermalPath        string `json:"thermal_path"`
 	BatteryPath        string `json:"battery_path"`
 	HwmonPath          string `json:"hwmon_path"`
@@ -27,6 +28,11 @@ type HardwareDriver interface {
 	SetBatteryLimit(limit int32) error
 	ReadTelemetry() (models.Telemetry, error)
 	ProbeCapabilities() DriverCaps
+	GetHardwareCurveCaps() HardwareCurveCaps
+	ReadHardwareCurve(fanIdx int) ([]models.CurvePoint, error)
+	WriteHardwareCurve(fanIdx int, points []models.CurvePoint) error
+	SetHardwareCurveEnabled(fanIdx int, mode int) error
+	IsHardwareCurveEnabled(fanIdx int) (bool, error)
 }
 
 type sysfsDriver struct {
@@ -88,6 +94,10 @@ func (d *sysfsDriver) ReadTelemetry() (models.Telemetry, error) {
 	telem.BatteryLimit = limit
 	telem.OnAC = onAC
 
+	if curveCaps, err := DetectHardwareCurveSupport(d.fs); err == nil && curveCaps.Supported {
+		telem.HasHardwareCurve = true
+	}
+
 	return telem, nil
 }
 
@@ -112,6 +122,10 @@ func (d *sysfsDriver) ProbeCapabilities() DriverCaps {
 		caps.BatteryPath = path
 	}
 
+	if curveCaps, err := DetectHardwareCurveSupport(d.fs); err == nil && curveCaps.Supported {
+		caps.HasHardwareFanCurve = true
+	}
+
 	if devices, err := ListHwmonDevices(d.fs); err == nil && len(devices) > 0 {
 		caps.HwmonPath = devices[0].Path
 		for _, dev := range devices {
@@ -129,3 +143,30 @@ func (d *sysfsDriver) ProbeCapabilities() DriverCaps {
 
 	return caps
 }
+
+// GetHardwareCurveCaps returns hardware fan curve support capabilities.
+func (d *sysfsDriver) GetHardwareCurveCaps() HardwareCurveCaps {
+	caps, _ := DetectHardwareCurveSupport(d.fs)
+	return caps
+}
+
+// ReadHardwareCurve reads points for the specified fan index from hardware sysfs.
+func (d *sysfsDriver) ReadHardwareCurve(fanIdx int) ([]models.CurvePoint, error) {
+	return ReadHardwareCurve(d.fs, fanIdx)
+}
+
+// WriteHardwareCurve writes points for the specified fan index to hardware sysfs.
+func (d *sysfsDriver) WriteHardwareCurve(fanIdx int, points []models.CurvePoint) error {
+	return WriteHardwareCurve(d.fs, fanIdx, points)
+}
+
+// SetHardwareCurveEnabled sets custom curve mode or resets to automatic EC control.
+func (d *sysfsDriver) SetHardwareCurveEnabled(fanIdx int, mode int) error {
+	return SetHardwareCurveEnabled(d.fs, fanIdx, mode)
+}
+
+// IsHardwareCurveEnabled checks if custom curve mode is currently enabled on hardware.
+func (d *sysfsDriver) IsHardwareCurveEnabled(fanIdx int) (bool, error) {
+	return IsHardwareCurveEnabled(d.fs, fanIdx)
+}
+

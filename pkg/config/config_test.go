@@ -192,3 +192,82 @@ func TestDiscoverConfigPath_LegacyFallback(t *testing.T) {
 	}
 }
 
+func TestLoadConfigWithCurves(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "kuhlerprofil-curve-*.toml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	content := `default_mode = "standard"
+default_battery_limit = 80
+poll_interval_ms = 1500
+auto_curve = true
+active_curve_profile = "quiet"
+
+[curves.quiet]
+name = "quiet"
+description = "Super quiet curve"
+points = [
+  { temp_c = 40, pwm = 40, mode = "silent" },
+  { temp_c = 60, pwm = 90, mode = "silent" },
+  { temp_c = 75, pwm = 150, mode = "standard" },
+  { temp_c = 85, pwm = 255, mode = "boost" }
+]
+`
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	cfg, err := config.Load(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("config.Load error: %v", err)
+	}
+
+	if cfg.ActiveCurveProfile != "quiet" {
+		t.Errorf("cfg.ActiveCurveProfile = %q, want 'quiet'", cfg.ActiveCurveProfile)
+	}
+	qProfile, ok := cfg.Curves["quiet"]
+	if !ok {
+		t.Fatalf("cfg.Curves['quiet'] not found")
+	}
+	if len(qProfile.Points) != 4 {
+		t.Fatalf("len(qProfile.Points) = %d, want 4", len(qProfile.Points))
+	}
+	if qProfile.Points[0].PWM != 40 || qProfile.Points[0].TempC != 40 {
+		t.Errorf("qProfile.Points[0] = %+v, want TempC:40, PWM:40", qProfile.Points[0])
+	}
+}
+
+func TestLoadConfigFillsDefaultCurves(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "kuhlerprofil-legacy-*.toml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	content := `default_mode = "standard"
+default_battery_limit = 80
+poll_interval_ms = 1500
+auto_curve = false
+`
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	cfg, err := config.Load(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("config.Load error: %v", err)
+	}
+
+	if cfg.ActiveCurveProfile != "balanced" {
+		t.Errorf("cfg.ActiveCurveProfile = %q, want 'balanced'", cfg.ActiveCurveProfile)
+	}
+	if len(cfg.Curves) == 0 {
+		t.Errorf("cfg.Curves was empty, expected default curve profiles to be populated")
+	}
+}
+
+

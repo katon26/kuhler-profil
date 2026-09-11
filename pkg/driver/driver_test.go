@@ -506,3 +506,111 @@ func TestRealFS_SmokeTest(t *testing.T) {
 		t.Errorf("NewDriver() returned nil")
 	}
 }
+
+func TestHardwareFanCurve_Supported(t *testing.T) {
+	mockFS := driver.NewMockFS()
+	hwmonDev := "/sys/class/hwmon/hwmon0"
+	mockFS.WriteFile(hwmonDev+"/name", []byte("asus\n"))
+	mockFS.WriteFile(hwmonDev+"/pwm1_enable", []byte("2\n"))
+
+	temps := []int{35, 45, 55, 65, 70, 75, 80, 85}
+	pwms := []int{50, 80, 110, 140, 170, 200, 230, 255}
+
+	for i := 1; i <= 8; i++ {
+		tFile := hwmonDev + "/pwm1_auto_point" + string(rune('0'+i)) + "_temp"
+		pFile := hwmonDev + "/pwm1_auto_point" + string(rune('0'+i)) + "_pwm"
+		mockFS.WriteFile(tFile, []byte(string(rune('0'+temps[i-1]/10))+string(rune('0'+temps[i-1]%10))+"\n"))
+		mockFS.WriteFile(pFile, []byte(string(rune('0'+pwms[i-1]/100))+string(rune('0'+(pwms[i-1]/10)%10))+string(rune('0'+pwms[i-1]%10))+"\n"))
+	}
+
+	d := driver.NewCustomDriver(mockFS)
+	caps := d.GetHardwareCurveCaps()
+	if !caps.Supported {
+		t.Fatalf("expected caps.Supported = true, got false")
+	}
+	if caps.FanCount != 1 {
+		t.Errorf("expected FanCount = 1, got %d", caps.FanCount)
+	}
+
+	points, err := d.ReadHardwareCurve(1)
+	if err != nil {
+		t.Fatalf("ReadHardwareCurve failed: %v", err)
+	}
+	if len(points) != 8 {
+		t.Fatalf("expected 8 points, got %d", len(points))
+	}
+	if points[0].TempC != 35 || points[7].PWM != 255 {
+		t.Errorf("points mismatch: point0=%+v, point7=%+v", points[0], points[7])
+	}
+
+	enabled, err := d.IsHardwareCurveEnabled(1)
+	if err != nil {
+		t.Fatalf("IsHardwareCurveEnabled failed: %v", err)
+	}
+	if enabled {
+		t.Errorf("expected enabled = false when pwm1_enable is 2")
+	}
+
+	// Update points
+	newPoints := []models.CurvePoint{
+		{TempC: 40, PWM: 60},
+		{TempC: 50, PWM: 90},
+		{TempC: 60, PWM: 120},
+		{TempC: 70, PWM: 160},
+		{TempC: 75, PWM: 190},
+		{TempC: 80, PWM: 220},
+		{TempC: 85, PWM: 245},
+		{TempC: 90, PWM: 255},
+	}
+	if err := d.WriteHardwareCurve(1, newPoints); err != nil {
+		t.Fatalf("WriteHardwareCurve failed: %v", err)
+	}
+
+	// Verify written file
+	content, _ := mockFS.ReadFile(hwmonDev + "/pwm1_auto_point1_temp")
+	if string(content) != "40\n" {
+		t.Errorf("pwm1_auto_point1_temp = %q, want '40\\n'", string(content))
+	}
+
+	// Enable curve
+	if err := d.SetHardwareCurveEnabled(1, 1); err != nil {
+		t.Fatalf("SetHardwareCurveEnabled(1, 1) failed: %v", err)
+	}
+	enableContent, _ := mockFS.ReadFile(hwmonDev + "/pwm1_enable")
+	if string(enableContent) != "1\n" {
+		t.Errorf("pwm1_enable = %q, want '1\\n'", string(enableContent))
+	}
+	enabled, _ = d.IsHardwareCurveEnabled(1)
+	if !enabled {
+		t.Errorf("expected IsHardwareCurveEnabled = true after enabling")
+	}
+}
+
+func TestHardwareFanCurve_Unsupported(t *testing.T) {
+	mockFS := driver.NewMockFS()
+	hwmonDev := "/sys/class/hwmon/hwmon0"
+	mockFS.WriteFile(hwmonDev+"/name", []byte("asus\n"))
+	// No pwm1_auto_point* files (VivoBook layout)
+
+	d := driver.NewCustomDriver(mockFS)
+	caps := d.GetHardwareCurveCaps()
+	if caps.Supported {
+		t.Errorf("expected caps.Supported = false for VivoBook layout, got true")
+	}
+
+	_, err := d.ReadHardwareCurve(1)
+	if err == nil {
+		t.Errorf("ReadHardwareCurve expected error, got nil")
+	}
+
+	err = d.WriteHardwareCurve(1, []models.CurvePoint{{TempC: 40, PWM: 50}, {TempC: 60, PWM: 100}})
+	if err == nil {
+		t.Errorf("WriteHardwareCurve expected error, got nil")
+	}
+
+	err = d.SetHardwareCurveEnabled(1, 1)
+	if err == nil {
+		t.Errorf("SetHardwareCurveEnabled expected error, got nil")
+	}
+}
+

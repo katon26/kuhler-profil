@@ -126,3 +126,162 @@ func TestTelemetryStruct(t *testing.T) {
 		t.Errorf("Telemetry struct fields mismatch: %+v", telem)
 	}
 }
+
+func TestValidateCurvePoints(t *testing.T) {
+	validPoints := []models.CurvePoint{
+		{TempC: 40, PWM: 50, Mode: models.ModeSilent},
+		{TempC: 55, PWM: 100, Mode: models.ModeSilent},
+		{TempC: 70, PWM: 160, Mode: models.ModeStandard},
+		{TempC: 85, PWM: 255, Mode: models.ModeBoost},
+	}
+	if err := models.ValidateCurvePoints(validPoints); err != nil {
+		t.Errorf("ValidateCurvePoints(validPoints) unexpected error: %v", err)
+	}
+
+	// Too few points
+	if err := models.ValidateCurvePoints([]models.CurvePoint{{TempC: 50, PWM: 100}}); err == nil {
+		t.Errorf("ValidateCurvePoints with 1 point expected error, got nil")
+	}
+
+	// Temperature too low (< 30)
+	tooLow := []models.CurvePoint{
+		{TempC: 25, PWM: 50},
+		{TempC: 60, PWM: 150},
+	}
+	if err := models.ValidateCurvePoints(tooLow); err == nil {
+		t.Errorf("ValidateCurvePoints with temp < 30 expected error, got nil")
+	}
+
+	// Temperature too high (> 100)
+	tooHigh := []models.CurvePoint{
+		{TempC: 40, PWM: 50},
+		{TempC: 105, PWM: 255},
+	}
+	if err := models.ValidateCurvePoints(tooHigh); err == nil {
+		t.Errorf("ValidateCurvePoints with temp > 100 expected error, got nil")
+	}
+
+	// Non-monotonic temperatures
+	nonMonotonic := []models.CurvePoint{
+		{TempC: 50, PWM: 50},
+		{TempC: 45, PWM: 100},
+	}
+	if err := models.ValidateCurvePoints(nonMonotonic); err == nil {
+		t.Errorf("ValidateCurvePoints non-monotonic expected error, got nil")
+	}
+
+	// Duplicate temperatures
+	duplicateTemp := []models.CurvePoint{
+		{TempC: 50, PWM: 50},
+		{TempC: 50, PWM: 100},
+	}
+	if err := models.ValidateCurvePoints(duplicateTemp); err == nil {
+		t.Errorf("ValidateCurvePoints duplicate temp expected error, got nil")
+	}
+
+	// PWM negative
+	negativePWM := []models.CurvePoint{
+		{TempC: 40, PWM: -10},
+		{TempC: 60, PWM: 100},
+	}
+	if err := models.ValidateCurvePoints(negativePWM); err == nil {
+		t.Errorf("ValidateCurvePoints negative PWM expected error, got nil")
+	}
+
+	// PWM > 255
+	overPWM := []models.CurvePoint{
+		{TempC: 40, PWM: 50},
+		{TempC: 60, PWM: 300},
+	}
+	if err := models.ValidateCurvePoints(overPWM); err == nil {
+		t.Errorf("ValidateCurvePoints PWM > 255 expected error, got nil")
+	}
+
+	// Zero PWM above 55C
+	zeroHotPWM := []models.CurvePoint{
+		{TempC: 40, PWM: 50},
+		{TempC: 65, PWM: 0},
+	}
+	if err := models.ValidateCurvePoints(zeroHotPWM); err == nil {
+		t.Errorf("ValidateCurvePoints zero PWM at 65C expected error, got nil")
+	}
+}
+
+func TestDefaultCurveProfiles(t *testing.T) {
+	profiles := models.DefaultCurveProfiles()
+	requiredProfiles := []string{"quiet", "balanced", "aggressive"}
+
+	for _, name := range requiredProfiles {
+		p, exists := profiles[name]
+		if !exists {
+			t.Errorf("DefaultCurveProfiles missing %q", name)
+			continue
+		}
+		if p.Name != name {
+			t.Errorf("Profile name mismatch: %q != %q", p.Name, name)
+		}
+		if err := models.ValidateCurvePoints(p.Points); err != nil {
+			t.Errorf("Default profile %q has invalid points: %v", name, err)
+		}
+	}
+}
+
+func TestExpandPointsTo8(t *testing.T) {
+	// Case 1: 3-point profile (e.g. aggressive) expands to 8 valid points
+	aggPoints := []models.CurvePoint{
+		{TempC: 35, PWM: 100, Mode: models.ModeStandard},
+		{TempC: 50, PWM: 170, Mode: models.ModeBoost},
+		{TempC: 68, PWM: 255, Mode: models.ModeBoost},
+	}
+	expanded := models.ExpandPointsTo8(aggPoints)
+	if len(expanded) != 8 {
+		t.Fatalf("ExpandPointsTo8 returned %d points, want 8", len(expanded))
+	}
+	if err := models.ValidateCurvePoints(expanded); err != nil {
+		t.Fatalf("ExpandPointsTo8 produced invalid points: %v", err)
+	}
+
+	// Verify strict monotonicity
+	for i := 1; i < len(expanded); i++ {
+		if expanded[i].TempC <= expanded[i-1].TempC {
+			t.Errorf("Points not strictly increasing: pt[%d]=%d <= pt[%d]=%d",
+				i, expanded[i].TempC, i-1, expanded[i-1].TempC)
+		}
+		if expanded[i].PWM < expanded[i-1].PWM {
+			t.Errorf("PWM decreased: pt[%d]=%d < pt[%d]=%d",
+				i, expanded[i].PWM, i-1, expanded[i-1].PWM)
+		}
+	}
+
+	// Case 2: 4-point profile (e.g. quiet)
+	quietPoints := models.DefaultCurveProfiles()["quiet"].Points
+	expandedQuiet := models.ExpandPointsTo8(quietPoints)
+	if len(expandedQuiet) != 8 {
+		t.Fatalf("ExpandPointsTo8 for quiet returned %d points, want 8", len(expandedQuiet))
+	}
+	if err := models.ValidateCurvePoints(expandedQuiet); err != nil {
+		t.Fatalf("ExpandPointsTo8 for quiet produced invalid points: %v", err)
+	}
+
+	// Case 3: Exactly 8 points returns identical points
+	exact8 := expandedQuiet
+	same8 := models.ExpandPointsTo8(exact8)
+	if len(same8) != 8 {
+		t.Fatalf("ExpandPointsTo8 with 8 points returned %d points", len(same8))
+	}
+	for i := range exact8 {
+		if same8[i] != exact8[i] {
+			t.Errorf("pt[%d] changed: %+v != %+v", i, same8[i], exact8[i])
+		}
+	}
+
+	// Case 4: Empty points returns 8 valid points from default balanced
+	emptyExpanded := models.ExpandPointsTo8(nil)
+	if len(emptyExpanded) != 8 {
+		t.Fatalf("ExpandPointsTo8(nil) returned %d points, want 8", len(emptyExpanded))
+	}
+	if err := models.ValidateCurvePoints(emptyExpanded); err != nil {
+		t.Fatalf("ExpandPointsTo8(nil) produced invalid points: %v", err)
+	}
+}
+

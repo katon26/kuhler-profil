@@ -118,6 +118,12 @@ func Load(path string) (models.Config, error) {
 	if cfg.PollIntervalMs <= 0 {
 		cfg.PollIntervalMs = 1500
 	}
+	if cfg.ActiveCurveProfile == "" {
+		cfg.ActiveCurveProfile = "balanced"
+	}
+	if len(cfg.Curves) == 0 {
+		cfg.Curves = models.DefaultCurveProfiles()
+	}
 
 	return cfg, nil
 }
