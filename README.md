@@ -275,9 +275,29 @@ kp auto
 # Enable / disable dynamic thermal curve governor
 kp auto on
 kp auto off
+
+# Enable auto governor with a specific curve profile
+kp auto on --profile quiet
 ```
 
-### 5. Interactive Terminal TUI
+### 5. Fan Curve Profiles
+
+Query or set active temperature-to-fan curve profiles:
+
+```bash
+# View active curve profile and hardware ACPI support status
+kp curve
+
+# List all available curve profiles
+kp curve list
+
+# Switch to a curve profile: quiet, balanced, aggressive, or custom
+kp curve set quiet
+kp curve set balanced
+kp curve set aggressive
+```
+
+### 6. Interactive Terminal TUI
 
 ```bash
 # Launch full-screen interactive dashboard
@@ -455,18 +475,44 @@ Ensure `/etc/dbus-1/system.d/org.freedesktop.kuhlerprofil.conf` exists and D-Bus
 
 ## Development & Testing
 
+### 1. Automated Software Tests
+Run all unit tests and race condition checks:
+
 ```bash
 # Run unit test suite
 make test
 
-# Run Go race detector
+# Run Go race detector (checks for concurrency issues)
 make test-race
 
 # Run GNOME extension automated tests
 make test-extension
 
-# Run complete verification suite
+# Run complete verification suite (race tests + extension tests)
 make test-all
+```
+
+### 2. Non-Destructive Hardware Smoke Test
+Probe your laptop's real sensors and ACPI interfaces without root or system changes:
+
+```bash
+make dry-run
+# or
+./bin/kuhlerprofild -dry-run
+```
+
+### 3. Local Daemon & CLI Testing (Without Installing to System)
+To test the daemon and CLI locally in real-time:
+
+```bash
+# Terminal 1: Run the daemon in foreground (requires sudo for sysfs access)
+sudo ./bin/kuhlerprofild
+
+# Terminal 2: Test commands against the running daemon
+./bin/kuhlerprofil status
+./bin/kuhlerprofil curve list
+./bin/kuhlerprofil curve set quiet
+./bin/kuhlerprofil tui
 ```
 
 ---
@@ -477,12 +523,12 @@ Contributions are welcome! KühlerProfil is an open-source project designed for 
 
 1. **Fork the repository** on GitHub.
 2. **Create a feature branch** (`git checkout -b feature/amazing-feature`).
-3. **Commit your changes** (`git commit -m 'feat: add support for custom fan curves'`).
+3. **Commit your changes** (`git commit -m 'feat: my cool feature'`).
 4. **Ensure all tests pass** (`make test-all`).
 5. **Open a Pull Request**.
 
 ### Areas for Contribution:
-- [ ] Custom multi-point RPM fan curve profiles
+- [x] Custom multi-point RPM fan curve profiles (Dual-Path ACPI & Software Governor)
 - [ ] ROG keyboard RGB backlight integration (`asus::kbd_backlight`)
 - [ ] Waybar & Polybar native integration scripts
 - [ ] KDE Plasma 6 Quick Settings Widget
