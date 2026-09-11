@@ -127,6 +127,95 @@ func (c *DBusClient) SetAutoMode(enabled bool) error {
 	return nil
 }
 
+// GetCurveProfiles queries available curve profiles over D-Bus.
+func (c *DBusClient) GetCurveProfiles() (map[string]models.CurveProfile, error) {
+	if c.caller == nil {
+		return nil, fmt.Errorf("dbus client is not connected")
+	}
+
+	call := c.caller.Call(Interface+".GetCurveProfiles", 0)
+	if call.Err != nil {
+		return nil, fmt.Errorf("failed to get curve profiles over D-Bus: %w", call.Err)
+	}
+
+	if len(call.Body) == 0 {
+		return nil, fmt.Errorf("empty response from GetCurveProfiles")
+	}
+
+	res := make(map[string]models.CurveProfile)
+	if rawMap, ok := call.Body[0].(map[string]map[string]dbus.Variant); ok {
+		for name, pMap := range rawMap {
+			desc := ""
+			if v, ok := pMap["description"]; ok {
+				if s, ok := v.Value().(string); ok {
+					desc = s
+				}
+			}
+			res[name] = models.CurveProfile{
+				Name:        name,
+				Description: desc,
+			}
+		}
+		return res, nil
+	}
+	return res, nil
+}
+
+// GetActiveCurveProfile queries the active curve profile name over D-Bus.
+func (c *DBusClient) GetActiveCurveProfile() (string, error) {
+	if c.caller == nil {
+		return "", fmt.Errorf("dbus client is not connected")
+	}
+
+	call := c.caller.Call(Interface+".GetActiveCurveProfile", 0)
+	if call.Err != nil {
+		return "", fmt.Errorf("failed to get active curve profile over D-Bus: %w", call.Err)
+	}
+
+	if len(call.Body) == 0 {
+		return "", fmt.Errorf("empty response from GetActiveCurveProfile")
+	}
+
+	if name, ok := call.Body[0].(string); ok {
+		return name, nil
+	}
+	return "", fmt.Errorf("unexpected response type %T from GetActiveCurveProfile", call.Body[0])
+}
+
+// SetCurveProfile changes the active curve profile over D-Bus.
+func (c *DBusClient) SetCurveProfile(name string) error {
+	if c.caller == nil {
+		return fmt.Errorf("dbus client is not connected")
+	}
+
+	call := c.caller.Call(Interface+".SetCurveProfile", 0, name)
+	if call.Err != nil {
+		return fmt.Errorf("failed to set curve profile over D-Bus: %w", call.Err)
+	}
+	return nil
+}
+
+// GetHardwareFanCurves queries hardware fan curve capabilities and status over D-Bus.
+func (c *DBusClient) GetHardwareFanCurves() (map[string]dbus.Variant, error) {
+	if c.caller == nil {
+		return nil, fmt.Errorf("dbus client is not connected")
+	}
+
+	call := c.caller.Call(Interface+".GetHardwareFanCurves", 0)
+	if call.Err != nil {
+		return nil, fmt.Errorf("failed to get hardware fan curves over D-Bus: %w", call.Err)
+	}
+
+	if len(call.Body) == 0 {
+		return nil, fmt.Errorf("empty response from GetHardwareFanCurves")
+	}
+
+	if res, ok := call.Body[0].(map[string]dbus.Variant); ok {
+		return res, nil
+	}
+	return nil, fmt.Errorf("unexpected response type %T from GetHardwareFanCurves", call.Body[0])
+}
+
 // SubscribeSignals registers D-Bus match rules and streams telemetry snapshots and mode changes.
 func (c *DBusClient) SubscribeSignals(ctx context.Context) (<-chan models.Telemetry, func(), error) {
 	if c.conn == nil {

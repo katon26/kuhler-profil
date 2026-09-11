@@ -91,6 +91,7 @@ func (d *Daemon) ProbeAndLogCapabilities() driver.DriverCaps {
 	d.logger.Printf("  • Battery charge limiter: %v (path: %s)", caps.HasBatteryLimit, caps.BatteryPath)
 	d.logger.Printf("  • Telemetry sensors: CPU temp=%v, Fan1=%v, Fan2=%v (hwmon: %s)",
 		caps.HasCPUTemp, caps.HasFan1RPM, caps.HasFan2RPM, caps.HwmonPath)
+	d.logger.Printf("  • Hardware ACPI fan curve: %v", caps.HasHardwareFanCurve)
 	return caps
 }
 
@@ -236,14 +237,19 @@ func (d *Daemon) ReloadConfig() error {
 		return fmt.Errorf("failed to reload config from %q: %w", cfgPath, err)
 	}
 
-	d.logger.Printf("Applying reloaded config from %q: Mode=%s, BatteryLimit=%d%%, AutoCurve=%v",
-		cfgPath, cfg.DefaultMode, cfg.DefaultBatteryLimit, cfg.AutoCurve)
+	d.logger.Printf("Applying reloaded config from %q: Mode=%s, BatteryLimit=%d%%, AutoCurve=%v, ActiveCurve=%s",
+		cfgPath, cfg.DefaultMode, cfg.DefaultBatteryLimit, cfg.AutoCurve, cfg.ActiveCurveProfile)
 
 	if err := d.eng.SetMode(cfg.DefaultMode); err != nil {
 		d.logger.Printf("[WARN] Failed to apply reloaded thermal mode: %v", err)
 	}
 	if err := d.eng.SetBatteryLimit(cfg.DefaultBatteryLimit); err != nil {
 		d.logger.Printf("[WARN] Failed to apply reloaded battery limit: %v", err)
+	}
+	if cfg.ActiveCurveProfile != "" {
+		if err := d.eng.SetCurveProfile(cfg.ActiveCurveProfile); err != nil {
+			d.logger.Printf("[WARN] Failed to apply reloaded curve profile: %v", err)
+		}
 	}
 	if err := d.eng.SetAutoMode(cfg.AutoCurve); err != nil {
 		d.logger.Printf("[WARN] Failed to apply reloaded auto mode: %v", err)

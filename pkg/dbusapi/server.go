@@ -33,12 +33,17 @@ const (
 	// SignalTelemetryTick is emitted on every telemetry refresh interval.
 	SignalTelemetryTick = "TelemetryTick"
 
+	// SignalCurveProfileChanged is emitted whenever active curve profile changes.
+	SignalCurveProfileChanged = "CurveProfileChanged"
+
 	// SignalThermalModeChangedFull is the fully-qualified member for ThermalModeChanged.
 	SignalThermalModeChangedFull = Interface + "." + SignalThermalModeChanged
 	// SignalBatteryLimitChangedFull is the fully-qualified member for BatteryLimitChanged.
 	SignalBatteryLimitChangedFull = Interface + "." + SignalBatteryLimitChanged
 	// SignalTelemetryTickFull is the fully-qualified member for TelemetryTick.
 	SignalTelemetryTickFull = Interface + "." + SignalTelemetryTick
+	// SignalCurveProfileChangedFull is the fully-qualified member for CurveProfileChanged.
+	SignalCurveProfileChangedFull = Interface + "." + SignalCurveProfileChanged
 )
 
 // IntrospectionXML provides formal D-Bus introspection definitions for tooling and language bindings.
@@ -58,11 +63,26 @@ const IntrospectionXML = `<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Objec
     <method name="SetAutoMode">
       <arg name="enabled" type="b" direction="in"/>
     </method>
+    <method name="GetCurveProfiles">
+      <arg name="profiles" type="a{sa{sv}}" direction="out"/>
+    </method>
+    <method name="GetActiveCurveProfile">
+      <arg name="name" type="s" direction="out"/>
+    </method>
+    <method name="SetCurveProfile">
+      <arg name="name" type="s" direction="in"/>
+    </method>
+    <method name="GetHardwareFanCurves">
+      <arg name="status" type="a{sv}" direction="out"/>
+    </method>
     <signal name="ThermalModeChanged">
       <arg name="mode" type="s"/>
     </signal>
     <signal name="BatteryLimitChanged">
       <arg name="limit" type="i"/>
+    </signal>
+    <signal name="CurveProfileChanged">
+      <arg name="name" type="s"/>
     </signal>
     <signal name="TelemetryTick">
       <arg name="status" type="a{sv}"/>
@@ -77,15 +97,22 @@ const IntrospectionXML = `<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Objec
 
 // FormatStatusMap converts a Telemetry struct into a generic map for D-Bus dictionary transmission.
 func FormatStatusMap(status models.Telemetry) map[string]interface{} {
+	activeCurve := status.ActiveCurveProfile
+	if activeCurve == "" {
+		activeCurve = "balanced"
+	}
 	return map[string]interface{}{
-		"cpu_temp":        status.CPUTemp,
-		"fan1_rpm":        status.Fan1RPM,
-		"fan2_rpm":        status.Fan2RPM,
-		"battery_percent": status.BatteryPercent,
-		"battery_limit":   status.BatteryLimit,
-		"on_ac":           status.OnAC,
-		"active_mode":     string(status.ActiveMode),
-		"auto_mode":       status.AutoMode,
+		"cpu_temp":              status.CPUTemp,
+		"fan1_rpm":              status.Fan1RPM,
+		"fan2_rpm":              status.Fan2RPM,
+		"battery_percent":       status.BatteryPercent,
+		"battery_limit":         status.BatteryLimit,
+		"on_ac":                 status.OnAC,
+		"active_mode":           string(status.ActiveMode),
+		"auto_mode":             status.AutoMode,
+		"active_curve_profile":  activeCurve,
+		"active_curve":          activeCurve,
+		"has_hardware_curve":    status.HasHardwareCurve,
 	}
 }
 
@@ -150,6 +177,14 @@ func ParseStatusMap(m map[string]interface{}) (models.Telemetry, error) {
 		case "auto_mode":
 			if b, ok := val.(bool); ok {
 				telem.AutoMode = b
+			}
+		case "active_curve_profile":
+			if s, ok := val.(string); ok {
+				telem.ActiveCurveProfile = s
+			}
+		case "has_hardware_curve":
+			if b, ok := val.(bool); ok {
+				telem.HasHardwareCurve = b
 			}
 		}
 	}
@@ -416,3 +451,79 @@ func (s *DBusServer) SetAutoMode(enabled bool) *dbus.Error {
 
 	return nil
 }
+
+// GetCurveProfiles returns all available curve profiles as a dictionary.
+func (s *DBusServer) GetCurveProfiles() (map[string]map[string]dbus.Variant, *dbus.Error) {
+	s.mu.Lock()
+	eng := s.eng
+	s.mu.Unlock()
+
+	if eng == nil {
+		return nil, dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
+	}
+
+	profiles := eng.GetCurveProfiles()
+	res := make(map[string]map[string]dbus.Variant, len(profiles))
+	for name, prof := range profiles {
+		pMap := map[string]dbus.Variant{
+			"name":        dbus.MakeVariant(prof.Name),
+			"description": dbus.MakeVariant(prof.Description),
+		}
+		res[name] = pMap
+	}
+	return res, nil
+}
+
+// GetActiveCurveProfile returns the active curve profile name.
+func (s *DBusServer) GetActiveCurveProfile() (string, *dbus.Error) {
+	s.mu.Lock()
+	eng := s.eng
+	s.mu.Unlock()
+
+	if eng == nil {
+		return "", dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
+	}
+
+	return eng.GetActiveCurveProfile(), nil
+}
+
+// SetCurveProfile activates the requested curve profile by name.
+func (s *DBusServer) SetCurveProfile(name string) *dbus.Error {
+	s.mu.Lock()
+	eng := s.eng
+	conn := s.conn
+	s.mu.Unlock()
+
+	if eng == nil {
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
+	}
+
+	if err := eng.SetCurveProfile(name); err != nil {
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.InvalidProfile", []interface{}{err.Error()})
+	}
+
+	if conn != nil {
+		_ = conn.Emit(Path, SignalCurveProfileChangedFull, name)
+	}
+
+	return nil
+}
+
+// GetHardwareFanCurves returns whether hardware ACPI fan curves are supported on this machine.
+func (s *DBusServer) GetHardwareFanCurves() (map[string]dbus.Variant, *dbus.Error) {
+	s.mu.Lock()
+	eng := s.eng
+	s.mu.Unlock()
+
+	if eng == nil {
+		return nil, dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
+	}
+
+	caps := eng.GetDriver().GetHardwareCurveCaps()
+	res := map[string]dbus.Variant{
+		"supported": dbus.MakeVariant(caps.Supported),
+		"fan_count": dbus.MakeVariant(int32(caps.FanCount)),
+	}
+	return res, nil
+}
+

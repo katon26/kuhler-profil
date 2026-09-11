@@ -25,8 +25,9 @@ func TestDBusSignatureAndMarshaling(t *testing.T) {
 		BatteryPercent: 85,
 		BatteryLimit:   80,
 		OnAC:           true,
-		ActiveMode:     models.ModeBoost,
-		AutoMode:       false,
+		ActiveMode:         models.ModeBoost,
+		AutoMode:           false,
+		ActiveCurveProfile: "balanced",
 	}
 
 	exported := dbusapi.FormatStatusMap(status)
@@ -555,3 +556,76 @@ func TestSignalBroadcaster(t *testing.T) {
 
 	server.Stop()
 }
+
+func TestDBusCurveMethods(t *testing.T) {
+	mockFS := driver.NewMockFS()
+	mockFS.WriteFile("/sys/devices/platform/asus-nb-wmi/throttle_thermal_policy", []byte("0\n"))
+	mockFS.WriteFile("/sys/class/power_supply/BAT0/charge_control_end_threshold", []byte("80\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("50000\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("2000\n"))
+
+	d := driver.NewCustomDriver(mockFS)
+	cfg := models.DefaultConfig()
+	eng := engine.NewEngine(d, cfg, "")
+
+	server := dbusapi.NewServer(eng)
+
+	// Test GetActiveCurveProfile
+	active, dbusErr := server.GetActiveCurveProfile()
+	if dbusErr != nil {
+		t.Fatalf("GetActiveCurveProfile error: %v", dbusErr)
+	}
+	if active != "balanced" {
+		t.Errorf("GetActiveCurveProfile = %q, want 'balanced'", active)
+	}
+
+	// Test GetCurveProfiles
+	profiles, dbusErr := server.GetCurveProfiles()
+	if dbusErr != nil {
+		t.Fatalf("GetCurveProfiles error: %v", dbusErr)
+	}
+	if len(profiles) < 3 {
+		t.Errorf("GetCurveProfiles returned %d profiles, want at least 3", len(profiles))
+	}
+
+	// Test SetCurveProfile
+	dbusErr = server.SetCurveProfile("quiet")
+	if dbusErr != nil {
+		t.Fatalf("SetCurveProfile('quiet') error: %v", dbusErr)
+	}
+	active, _ = server.GetActiveCurveProfile()
+	if active != "quiet" {
+		t.Errorf("After SetCurveProfile, active = %q, want 'quiet'", active)
+	}
+
+	// Test SetCurveProfile invalid
+	dbusErr = server.SetCurveProfile("nonexistent")
+	if dbusErr == nil {
+		t.Errorf("expected error setting invalid curve profile, got nil")
+	}
+
+	// Test GetHardwareFanCurves
+	hwCurves, dbusErr := server.GetHardwareFanCurves()
+	if dbusErr != nil {
+		t.Fatalf("GetHardwareFanCurves error: %v", dbusErr)
+	}
+	if hwCurves["supported"].Value().(bool) != false {
+		t.Errorf("expected supported = false for mockFS")
+	}
+
+	// Test with nil engine
+	nilServer := dbusapi.NewServer(nil)
+	if _, err := nilServer.GetCurveProfiles(); err == nil {
+		t.Errorf("nilServer.GetCurveProfiles() expected error, got nil")
+	}
+	if _, err := nilServer.GetActiveCurveProfile(); err == nil {
+		t.Errorf("nilServer.GetActiveCurveProfile() expected error, got nil")
+	}
+	if err := nilServer.SetCurveProfile("quiet"); err == nil {
+		t.Errorf("nilServer.SetCurveProfile() expected error, got nil")
+	}
+	if _, err := nilServer.GetHardwareFanCurves(); err == nil {
+		t.Errorf("nilServer.GetHardwareFanCurves() expected error, got nil")
+	}
+}
+

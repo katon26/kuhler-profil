@@ -340,3 +340,167 @@ func TestEngineConcurrentAccessRace(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestEngineCurveProfiles(t *testing.T) {
+	mockFS, d := setupMockHardware()
+	tmpDir, err := os.MkdirTemp("", "koolthing-engine-curves-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	cfgPath := filepath.Join(tmpDir, "config.toml")
+
+	cfg := models.DefaultConfig()
+	eng := engine.NewEngine(d, cfg, cfgPath)
+
+	profiles := eng.GetCurveProfiles()
+	if len(profiles) < 3 {
+		t.Errorf("GetCurveProfiles returned %d profiles, want at least 3", len(profiles))
+	}
+
+	active := eng.GetActiveCurveProfile()
+	if active != "balanced" {
+		t.Errorf("GetActiveCurveProfile = %q, want 'balanced'", active)
+	}
+
+	// Switch to quiet profile
+	if err := eng.SetCurveProfile("quiet"); err != nil {
+		t.Fatalf("SetCurveProfile('quiet') error: %v", err)
+	}
+	if eng.GetActiveCurveProfile() != "quiet" {
+		t.Errorf("GetActiveCurveProfile after set = %q, want 'quiet'", eng.GetActiveCurveProfile())
+	}
+	if eng.GetTelemetry().ActiveCurveProfile != "quiet" {
+		t.Errorf("Telemetry ActiveCurveProfile = %q, want 'quiet'", eng.GetTelemetry().ActiveCurveProfile)
+	}
+
+	// Verify persistence
+	loadedCfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Failed to load persisted config: %v", err)
+	}
+	if loadedCfg.ActiveCurveProfile != "quiet" {
+		t.Errorf("Persisted ActiveCurveProfile = %q, want 'quiet'", loadedCfg.ActiveCurveProfile)
+	}
+
+	// Invalid profile
+	if err := eng.SetCurveProfile("non_existent_profile"); err == nil {
+		t.Errorf("SetCurveProfile('non_existent_profile') expected error, got nil")
+	}
+
+	_ = mockFS
+}
+
+func TestEngineHardwareCurveDelegation(t *testing.T) {
+	mockFS := driver.NewMockFS()
+	hwmonDev := "/sys/class/hwmon/hwmon0"
+	mockFS.WriteFile(hwmonDev+"/name", []byte("asus\n"))
+	mockFS.WriteFile(hwmonDev+"/pwm1_enable", []byte("2\n"))
+	mockFS.WriteFile("/sys/devices/platform/asus-nb-wmi/throttle_thermal_policy", []byte("0\n"))
+	for i := 1; i <= 8; i++ {
+		mockFS.WriteFile(hwmonDev+"/pwm1_auto_point"+string(rune('0'+i))+"_temp", []byte("50\n"))
+		mockFS.WriteFile(hwmonDev+"/pwm1_auto_point"+string(rune('0'+i))+"_pwm", []byte("100\n"))
+	}
+
+	d := driver.NewCustomDriver(mockFS)
+	cfg := models.DefaultConfig()
+	eng := engine.NewEngine(d, cfg, "")
+
+	if !eng.GetTelemetry().HasHardwareCurve {
+		t.Errorf("expected HasHardwareCurve = true for mock hardware")
+	}
+
+	// Enabling auto mode delegates to hardware ACPI curve
+	if err := eng.SetAutoMode(true); err != nil {
+		t.Fatalf("SetAutoMode(true) error: %v", err)
+	}
+	pwmEnable, _ := mockFS.ReadFile(hwmonDev + "/pwm1_enable")
+	if string(pwmEnable) != "1\n" {
+		t.Errorf("pwm1_enable = %q, want '1\\n'", string(pwmEnable))
+	}
+
+	// Disabling auto mode reverts to automatic EC control
+	if err := eng.SetAutoMode(false); err != nil {
+		t.Fatalf("SetAutoMode(false) error: %v", err)
+	}
+	pwmEnable, _ = mockFS.ReadFile(hwmonDev + "/pwm1_enable")
+	if string(pwmEnable) != "2\n" {
+		t.Errorf("pwm1_enable = %q, want '2\\n'", string(pwmEnable))
+	}
+}
+
+func TestEngineCurveHysteresisAndDwell(t *testing.T) {
+	mockFS, d := setupMockHardware()
+	// Set initial temp to 45°C
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("45000\n"))
+
+	cfg := models.DefaultConfig()
+	cfg.PollIntervalMs = 20
+	cfg.AutoCurve = true
+	cfg.ActiveCurveProfile = "quiet"
+
+	eng := engine.NewEngine(d, cfg, "")
+	// Use 150ms dwell for this test
+	eng.SetDwellDuration(150 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go eng.Start(ctx)
+
+	// Initial mode was Standard; at 45°C, quiet targets Silent (down-step).
+	// Before dwell period (< 150ms), mode should still be Standard.
+	time.Sleep(40 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeStandard {
+		t.Errorf("Before dwell expiry, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeStandard)
+	}
+
+	// After dwell period (> 150ms), mode should have down-stepped to Silent
+	time.Sleep(160 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeSilent {
+		t.Errorf("After dwell expiry, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeSilent)
+	}
+
+	// Mild temperature 58°C: quiet profile should stay Silent (Standard threshold is 70°C)
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("58000\n"))
+	time.Sleep(60 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeSilent {
+		t.Errorf("At 58°C in quiet profile, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeSilent)
+	}
+
+	// Warming up to 72°C (above standardUp = 70°C): immediate up-step to Standard
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("72000\n"))
+	time.Sleep(50 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeStandard {
+		t.Errorf("Immediate up-step at 72°C, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeStandard)
+	}
+
+	// Spiking to 88°C (above boostUp = 85°C): immediate up-step to Boost
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("88000\n"))
+	time.Sleep(50 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeBoost {
+		t.Errorf("Immediate up-step at 88°C, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeBoost)
+	}
+
+	// Cooling slightly to 76°C (boostDown = 70°C): remains Boost in hysteresis deadband
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("76000\n"))
+	time.Sleep(100 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeBoost {
+		t.Errorf("At 76°C in boost hysteresis zone, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeBoost)
+	}
+
+	// Cooling to 65°C (below boostDown = 70°C): down-step to Standard with dwell
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("65000\n"))
+	// Before dwell
+	time.Sleep(40 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeBoost {
+		t.Errorf("Before down-step dwell, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeBoost)
+	}
+	// After dwell
+	time.Sleep(160 * time.Millisecond)
+	if eng.GetTelemetry().ActiveMode != models.ModeStandard {
+		t.Errorf("After down-step dwell at 65°C, mode = %v, want %v", eng.GetTelemetry().ActiveMode, models.ModeStandard)
+	}
+}
+
+
