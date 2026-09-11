@@ -102,9 +102,53 @@ func NewRootCmd(opts Options) *cobra.Command {
 	rootCmd.AddCommand(newModeCmd(opts))
 	rootCmd.AddCommand(newBatteryCmd(opts))
 	rootCmd.AddCommand(newAutoCmd(opts))
+	rootCmd.AddCommand(newCurveCmd(opts))
 	rootCmd.AddCommand(newTUICmd(opts))
+	rootCmd.AddCommand(newSetCmd(opts))
 
 	return rootCmd
+}
+
+func newSetCmd(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "set <setting> [value]",
+		Short: "Convenience shortcut to set mode, curve profile, or battery limit",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return fmt.Errorf("missing argument for set. Examples:\n  kp mode boost\n  kp curve set aggressive\n  kp battery 80")
+			}
+			target := strings.ToLower(strings.TrimSpace(args[0]))
+			if len(args) >= 2 {
+				val := strings.ToLower(strings.TrimSpace(args[1]))
+				switch target {
+				case "curve", "profile":
+					curveCmd := newCurveCmd(opts)
+					return curveCmd.RunE(cmd, []string{"set", val})
+				case "mode":
+					modeCmd := newModeCmd(opts)
+					return modeCmd.RunE(cmd, []string{val})
+				case "battery":
+					batCmd := newBatteryCmd(opts)
+					return batCmd.RunE(cmd, []string{val})
+				}
+			}
+
+			// Single argument smart routing
+			switch target {
+			case "quiet", "balanced", "aggressive":
+				curveCmd := newCurveCmd(opts)
+				return curveCmd.RunE(cmd, []string{"set", target})
+			case "silent", "standard", "boost":
+				modeCmd := newModeCmd(opts)
+				return modeCmd.RunE(cmd, []string{target})
+			case "60", "80", "100":
+				batCmd := newBatteryCmd(opts)
+				return batCmd.RunE(cmd, []string{target})
+			default:
+				return fmt.Errorf("unknown target %q. Did you mean:\n  kp curve set %s\n  kp mode %s", target, target, target)
+			}
+		},
+	}
 }
 
 // Execute executes the CLI with default production options.

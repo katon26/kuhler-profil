@@ -90,11 +90,17 @@ func RenderDashboard(status models.Telemetry, width int, height int) string {
 	boostPill := ModePill(models.ModeBoost, status.ActiveMode)
 	pillsRow := lipgloss.JoinHorizontal(lipgloss.Center, silentPill, "  ", standardPill, "  ", boostPill)
 
+	profName := status.ActiveCurveProfile
+	if profName == "" {
+		profName = "balanced"
+	}
+	profFormatted := strings.ToUpper(profName[:1]) + profName[1:]
+
 	var autoGovBadge string
 	if status.AutoMode {
-		autoGovBadge = AutoGovernorOn.Render("⚡ AUTO-CURVE GOVERNOR: ACTIVE")
+		autoGovBadge = AutoGovernorOn.Render(fmt.Sprintf("⚡ AUTO-CURVE: %s", strings.ToUpper(profName)))
 	} else {
-		autoGovBadge = AutoGovernorOff.Render("○ AUTO-CURVE GOVERNOR: DISABLED")
+		autoGovBadge = AutoGovernorOff.Render(fmt.Sprintf("○ GOVERNOR OFF (%s)", profFormatted))
 	}
 
 	modeContent := lipgloss.JoinVertical(

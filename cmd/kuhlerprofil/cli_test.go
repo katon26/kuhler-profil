@@ -22,6 +22,7 @@ type mockCaller struct {
 	lastMode    string
 	lastLimit   int32
 	lastAuto    bool
+	lastCurve   string
 	returnError bool
 }
 
@@ -52,6 +53,32 @@ func (m *mockCaller) Call(method string, flags dbus.Flags, args ...interface{}) 
 	case dbusapi.Interface + ".SetAutoMode":
 		if len(args) > 0 {
 			m.lastAuto = args[0].(bool)
+		}
+	case dbusapi.Interface + ".GetCurveProfiles":
+		profiles := map[string]map[string]dbus.Variant{
+			"quiet": {
+				"name":        dbus.MakeVariant("quiet"),
+				"description": dbus.MakeVariant("Quiet acoustic profile"),
+			},
+			"balanced": {
+				"name":        dbus.MakeVariant("balanced"),
+				"description": dbus.MakeVariant("Balanced cooling profile"),
+			},
+			"aggressive": {
+				"name":        dbus.MakeVariant("aggressive"),
+				"description": dbus.MakeVariant("High-performance cooling profile"),
+			},
+		}
+		call.Body = []interface{}{profiles}
+	case dbusapi.Interface + ".GetActiveCurveProfile":
+		active := m.lastCurve
+		if active == "" {
+			active = "balanced"
+		}
+		call.Body = []interface{}{active}
+	case dbusapi.Interface + ".SetCurveProfile":
+		if len(args) > 0 {
+			m.lastCurve = args[0].(string)
 		}
 	default:
 		call.Err = errors.New("unknown D-Bus method: " + method)
@@ -119,14 +146,16 @@ func setupTestEnvironment(caller *mockCaller, mockFS *driver.MockFS) (Options, *
 
 func defaultMockTelemetryMap() map[string]interface{} {
 	return map[string]interface{}{
-		"cpu_temp":        52.5,
-		"fan1_rpm":        int32(2600),
-		"fan2_rpm":        int32(2400),
-		"battery_percent": int32(80),
-		"battery_limit":   int32(80),
-		"on_ac":           true,
-		"active_mode":     "standard",
-		"auto_mode":       false,
+		"cpu_temp":           52.5,
+		"fan1_rpm":           int32(2600),
+		"fan2_rpm":           int32(2400),
+		"battery_percent":    int32(80),
+		"battery_limit":      int32(80),
+		"on_ac":              true,
+		"active_mode":        "standard",
+		"auto_mode":          false,
+		"active_curve":       "balanced",
+		"has_hardware_curve": false,
 	}
 }
 
@@ -702,3 +731,156 @@ func TestAutoCmd_RequiresDaemonWhenDBusFails(t *testing.T) {
 		t.Errorf("expected error to mention kuhlerprofild daemon, got: %v", err)
 	}
 }
+
+func TestCurveCmd_Get(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap(), lastCurve: "balanced"}
+	opts, out, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"curve"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'curve': %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Active Curve Profile: Balanced") {
+		t.Errorf("expected output to contain active curve profile 'Balanced', got: %s", output)
+	}
+	if !strings.Contains(output, "Hardware ACPI Curve") {
+		t.Errorf("expected output to contain hardware ACPI curve info, got: %s", output)
+	}
+}
+
+func TestCurveCmd_List(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap(), lastCurve: "quiet"}
+	opts, out, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"curve", "list"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'curve list': %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Available Fan Curve Profiles:") {
+		t.Errorf("expected header 'Available Fan Curve Profiles:', got: %s", output)
+	}
+	if !strings.Contains(output, "quiet") || !strings.Contains(output, "balanced") || !strings.Contains(output, "aggressive") {
+		t.Errorf("expected list to contain profiles quiet, balanced, aggressive, got: %s", output)
+	}
+	// 'quiet' should have the active marker '* '
+	if !strings.Contains(output, "* quiet") {
+		t.Errorf("expected active marker '* quiet', got: %s", output)
+	}
+}
+
+func TestCurveCmd_Set(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap()}
+	opts, out, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"curve", "set", "aggressive"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'curve set aggressive': %v", err)
+	}
+
+	if caller.lastCurve != "aggressive" {
+		t.Errorf("expected caller.lastCurve to be 'aggressive', got %q", caller.lastCurve)
+	}
+	if !strings.Contains(out.String(), `Curve profile set to "aggressive"`) {
+		t.Errorf("expected success message, got: %s", out.String())
+	}
+}
+
+func TestCurveCmd_DirectProfileArg(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap()}
+	opts, out, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"curve", "quiet"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'curve quiet': %v", err)
+	}
+
+	if caller.lastCurve != "quiet" {
+		t.Errorf("expected caller.lastCurve to be 'quiet', got %q", caller.lastCurve)
+	}
+	if !strings.Contains(out.String(), `Curve profile set to "quiet"`) {
+		t.Errorf("expected success message, got: %s", out.String())
+	}
+}
+
+func TestCurveCmd_DaemonFailure(t *testing.T) {
+	caller := &mockCaller{returnError: true}
+	opts, _, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"curve", "set", "quiet"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected error when setting curve with daemon not running, got nil")
+	}
+	if !strings.Contains(err.Error(), "kuhlerprofild") {
+		t.Errorf("expected daemon error to mention 'kuhlerprofild', got: %v", err)
+	}
+}
+
+func TestSetCmd_SmartRouting(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap()}
+	opts, _, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"set", "aggressive"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'set aggressive': %v", err)
+	}
+	if caller.lastCurve != "aggressive" {
+		t.Errorf("expected caller.lastCurve to be 'aggressive', got %q", caller.lastCurve)
+	}
+
+	cmd = NewRootCmd(opts)
+	cmd.SetArgs([]string{"set", "boost"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'set boost': %v", err)
+	}
+	if caller.lastMode != "boost" {
+		t.Errorf("expected caller.lastMode to be 'boost', got %q", caller.lastMode)
+	}
+
+	cmd = NewRootCmd(opts)
+	cmd.SetArgs([]string{"set", "80"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'set 80': %v", err)
+	}
+	if caller.lastLimit != 80 {
+		t.Errorf("expected caller.lastLimit to be 80, got %d", caller.lastLimit)
+	}
+}
+
+func TestAutoCmd_WithProfileFlag(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap()}
+	opts, out, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"auto", "on", "--profile", "quiet"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error executing 'auto on --profile quiet': %v", err)
+	}
+
+	if !caller.lastAuto {
+		t.Errorf("expected auto mode to be set to true")
+	}
+	if caller.lastCurve != "quiet" {
+		t.Errorf("expected curve profile to be set to 'quiet', got %q", caller.lastCurve)
+	}
+	if !strings.Contains(out.String(), "quiet") {
+		t.Errorf("expected output to mention profile 'quiet', got: %s", out.String())
+	}
+}
+

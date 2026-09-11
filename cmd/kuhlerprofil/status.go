@@ -93,10 +93,22 @@ func formatStatusHuman(opts Options, t models.Telemetry) {
 		fan2Str = "0 RPM (Stopped / Idle)"
 	}
 
+	curveProfileStr := t.ActiveCurveProfile
+	if curveProfileStr == "" {
+		curveProfileStr = "balanced"
+	}
+	curveProfileFormatted := strings.ToUpper(curveProfileStr[:1]) + curveProfileStr[1:]
+
+	hwCurveStr := "No (Software Governor)"
+	if t.HasHardwareCurve {
+		hwCurveStr = "Yes (ASUS ACPI Hardware Curves)"
+	}
+
 	fmt.Fprintln(out, "KühlerProfil System Status")
 	fmt.Fprintln(out, "──────────────────────────────────────────────────")
 	fmt.Fprintf(out, "  • Thermal Profile:   %s\n", modeFormatted)
-	fmt.Fprintf(out, "  • Auto Governor:     %s\n", autoStr)
+	fmt.Fprintf(out, "  • Auto Governor:     %s (Profile: %s)\n", autoStr, curveProfileFormatted)
+	fmt.Fprintf(out, "  • Hardware ACPI:     %s\n", hwCurveStr)
 	fmt.Fprintf(out, "  • CPU Temperature:   %.1f°C\n", t.CPUTemp)
 	fmt.Fprintf(out, "  • Fan 1 (CPU):       %d RPM\n", t.Fan1RPM)
 	fmt.Fprintf(out, "  • Fan 2 (GPU):       %s\n", fan2Str)

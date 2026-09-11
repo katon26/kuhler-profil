@@ -92,10 +92,15 @@ runTest('extension.js defines matching D-Bus interface and signatures', () => {
     assert(code.includes('name="SetThermalMode"'), 'Must define SetThermalMode method');
     assert(code.includes('name="SetBatteryLimit"'), 'Must define SetBatteryLimit method');
     assert(code.includes('name="SetAutoMode"'), 'Must define SetAutoMode method');
+    assert(code.includes('name="GetCurveProfiles"'), 'Must define GetCurveProfiles method');
+    assert(code.includes('name="GetActiveCurveProfile"'), 'Must define GetActiveCurveProfile method');
+    assert(code.includes('name="SetCurveProfile"'), 'Must define SetCurveProfile method');
+    assert(code.includes('name="GetHardwareFanCurves"'), 'Must define GetHardwareFanCurves method');
 
     // Verify Signals
     assert(code.includes('name="ThermalModeChanged"'), 'Must define ThermalModeChanged signal');
     assert(code.includes('name="BatteryLimitChanged"'), 'Must define BatteryLimitChanged signal');
+    assert(code.includes('name="CurveProfileChanged"'), 'Must define CurveProfileChanged signal');
     assert(code.includes('name="TelemetryTick"'), 'Must define TelemetryTick signal');
 
     // Verify QuickSettings and Extension usage
@@ -139,6 +144,8 @@ function testParseTelemetry(raw) {
         onAC: Boolean(data.on_ac ?? true),
         activeMode: String(data.active_mode ?? 'standard').toLowerCase(),
         autoMode: Boolean(data.auto_mode ?? false),
+        activeCurve: String(data.active_curve_profile ?? data.active_curve ?? 'balanced').toLowerCase(),
+        hasHardwareCurve: Boolean(data.has_hardware_curve ?? false),
     };
 }
 
@@ -169,6 +176,8 @@ runTest('parseTelemetry properly formats live D-Bus telemetry payload', () => {
         on_ac: true,
         active_mode: 'BOOST',
         auto_mode: false,
+        active_curve_profile: 'aggressive',
+        has_hardware_curve: true,
     };
 
     const parsed = testParseTelemetry(rawPayload);
@@ -180,6 +189,8 @@ runTest('parseTelemetry properly formats live D-Bus telemetry payload', () => {
     assert.equal(parsed.onAC, true);
     assert.equal(parsed.activeMode, 'boost');
     assert.equal(parsed.autoMode, false);
+    assert.equal(parsed.activeCurve, 'aggressive');
+    assert.equal(parsed.hasHardwareCurve, true);
 });
 
 runTest('parseTelemetry handles null and partial payloads with safe defaults', () => {
@@ -195,15 +206,21 @@ runTest('parseTelemetry handles null and partial payloads with safe defaults', (
     assert.equal(partial.onAC, true);
     assert.equal(partial.activeMode, 'standard');
     assert.equal(partial.autoMode, false);
+    assert.equal(partial.activeCurve, 'balanced');
+    assert.equal(partial.hasHardwareCurve, false);
 });
 
-runTest('Thermal modes list and battery limits cover all ASUS specifications', () => {
+runTest('Thermal modes list, curve profiles, and battery limits cover ASUS specifications', () => {
     const expectedModes = ['silent', 'standard', 'boost'];
+    const expectedCurves = ['quiet', 'balanced', 'aggressive'];
     const expectedLimits = [60, 80, 100];
 
     const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
     for (const mode of expectedModes) {
         assert(code.includes(`'${mode}'`), `extension.js must include mode '${mode}'`);
+    }
+    for (const curve of expectedCurves) {
+        assert(code.includes(`'${curve}'`), `extension.js must include curve profile '${curve}'`);
     }
     for (const limit of expectedLimits) {
         assert(code.includes(String(limit)), `extension.js must include battery limit ${limit}`);

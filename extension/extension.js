@@ -38,11 +38,26 @@ export const KuhlerProfilInterfaceXML = `
     <method name="SetAutoMode">
       <arg name="enabled" type="b" direction="in"/>
     </method>
+    <method name="GetCurveProfiles">
+      <arg name="profiles" type="a{sa{sv}}" direction="out"/>
+    </method>
+    <method name="GetActiveCurveProfile">
+      <arg name="profile" type="s" direction="out"/>
+    </method>
+    <method name="SetCurveProfile">
+      <arg name="profile" type="s" direction="in"/>
+    </method>
+    <method name="GetHardwareFanCurves">
+      <arg name="status" type="a{sv}" direction="out"/>
+    </method>
     <signal name="ThermalModeChanged">
       <arg name="mode" type="s"/>
     </signal>
     <signal name="BatteryLimitChanged">
       <arg name="limit" type="i"/>
+    </signal>
+    <signal name="CurveProfileChanged">
+      <arg name="profile" type="s"/>
     </signal>
     <signal name="TelemetryTick">
       <arg name="status" type="a{sv}"/>
@@ -99,6 +114,8 @@ export function parseTelemetry(raw) {
         onAC: Boolean(data.on_ac ?? true),
         activeMode: String(data.active_mode ?? 'standard').toLowerCase(),
         autoMode: Boolean(data.auto_mode ?? false),
+        activeCurve: String(data.active_curve_profile ?? data.active_curve ?? 'balanced').toLowerCase(),
+        hasHardwareCurve: Boolean(data.has_hardware_curve ?? false),
     };
 }
 
@@ -257,6 +274,16 @@ export class KuhlerProfilDBusClient {
             });
             if (sigLimitId) this._signalIds.push(sigLimitId);
 
+            const sigCurveId = this._proxy.connectSignal('CurveProfileChanged', (_proxy, _sender, [profile]) => {
+                if (this._lastTelemetry) {
+                    this._lastTelemetry.activeCurve = String(profile).toLowerCase();
+                    this._notify(this._lastTelemetry);
+                } else {
+                    this.getStatus().catch(() => {});
+                }
+            });
+            if (sigCurveId) this._signalIds.push(sigCurveId);
+
             const sigTelemId = this._proxy.connectSignal('TelemetryTick', (_proxy, _sender, [status]) => {
                 const parsed = parseTelemetry(status);
                 if (parsed) {
@@ -300,6 +327,13 @@ export class KuhlerProfilDBusClient {
                 const limit = Array.isArray(unwrapped) ? unwrapped[0] : unwrapped;
                 if (this._lastTelemetry) {
                     this._lastTelemetry.batteryLimit = Number(limit);
+                    this._connected = true;
+                    this._notify(this._lastTelemetry);
+                }
+            } else if (signalName === 'CurveProfileChanged') {
+                const profile = Array.isArray(unwrapped) ? unwrapped[0] : unwrapped;
+                if (this._lastTelemetry) {
+                    this._lastTelemetry.activeCurve = String(profile).toLowerCase();
                     this._connected = true;
                     this._notify(this._lastTelemetry);
                 }
@@ -393,6 +427,56 @@ export class KuhlerProfilDBusClient {
             });
         });
     }
+
+    async getCurveProfiles() {
+        if (!this._proxy) throw new Error('D-Bus proxy not initialized');
+
+        return new Promise((resolve, reject) => {
+            this._proxy.GetCurveProfilesRemote((result, error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                const unwrapped = unwrapVariant(result);
+                const profiles = Array.isArray(unwrapped) ? unwrapped[0] : unwrapped;
+                resolve(profiles);
+            });
+        });
+    }
+
+    async getActiveCurveProfile() {
+        if (!this._proxy) throw new Error('D-Bus proxy not initialized');
+
+        return new Promise((resolve, reject) => {
+            this._proxy.GetActiveCurveProfileRemote((result, error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                const unwrapped = unwrapVariant(result);
+                const active = Array.isArray(unwrapped) ? unwrapped[0] : unwrapped;
+                resolve(String(active));
+            });
+        });
+    }
+
+    async setCurveProfile(profile) {
+        if (!this._proxy) throw new Error('D-Bus proxy not initialized');
+
+        return new Promise((resolve, reject) => {
+            this._proxy.SetCurveProfileRemote(String(profile), (_result, error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                if (this._lastTelemetry) {
+                    this._lastTelemetry.activeCurve = String(profile).toLowerCase();
+                    this._notify(this._lastTelemetry);
+                }
+                resolve();
+            });
+        });
+    }
 }
 
 export const KoolThingDBusClient = KuhlerProfilDBusClient;
@@ -415,6 +499,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._statusIndicator = statusIndicator;
         this._modeButtons = new Map();
         this._batteryButtons = new Map();
+        this._curveButtons = new Map();
         this._unsubscribe = null;
 
         this._buildMenu();
@@ -451,6 +536,12 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         // Battery Care Limit Section
         this._buildBatteryLimitSection();
+
+        // Separator
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Fan Curve Profile Section
+        this._buildCurveProfileSection();
 
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -637,6 +728,72 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this.menu.addMenuItem(item);
     }
 
+    _buildCurveProfileSection() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        });
+
+        const container = new St.BoxLayout({
+            vertical: true,
+            style_class: 'koolthing-section',
+            x_expand: true,
+        });
+
+        const headerBox = new St.BoxLayout({
+            vertical: false,
+            x_expand: true,
+        });
+
+        const title = new St.Label({
+            text: _('Fan Curve Profile'),
+            style_class: 'koolthing-section-title',
+            x_expand: true,
+        });
+        headerBox.add_child(title);
+
+        this._hwCurveBadge = new St.Label({
+            text: _('Software Governor'),
+            style_class: 'koolthing-metric-label',
+        });
+        headerBox.add_child(this._hwCurveBadge);
+        container.add_child(headerBox);
+
+        const btnGroup = new St.BoxLayout({
+            vertical: false,
+            style_class: 'koolthing-button-group',
+            x_expand: true,
+        });
+
+        const curveProfiles = [
+            { id: 'quiet', name: _('Quiet') },
+            { id: 'balanced', name: _('Balanced') },
+            { id: 'aggressive', name: _('Aggressive') },
+        ];
+
+        for (const cp of curveProfiles) {
+            const btn = new St.Button({
+                label: cp.name,
+                style_class: 'koolthing-mode-button',
+                can_focus: true,
+                x_expand: true,
+            });
+
+            btn.connect('clicked', () => {
+                this._client.setCurveProfile(cp.id).catch(err => {
+                    console.error(`[KühlerProfil] Failed to set curve profile ${cp.id}: ${err}`);
+                });
+            });
+
+            this._curveButtons.set(cp.id, btn);
+            btnGroup.add_child(btn);
+        }
+
+        container.add_child(btnGroup);
+        item.add_child(container);
+        this.menu.addMenuItem(item);
+    }
+
     _buildAutoGovernorSection() {
         this._autoSwitch = new PopupMenu.PopupSwitchMenuItem(
             _('Dynamic Auto Governor'),
@@ -717,10 +874,13 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             this._statusIndicator.iconName = modeInfo.icon;
         }
 
-        // Subtitle: "Standard · 52°C · 2400 RPM"
+        // Subtitle: "Standard · 52°C · 2400 RPM" (or with [Curve] in Auto mode)
         const tempText = telemetry.cpuTemp > 0 ? `${Math.round(telemetry.cpuTemp)}°C` : '--°C';
         const rpmText = telemetry.fan1Rpm > 0 ? `${telemetry.fan1Rpm} RPM` : '0 RPM';
-        this.subtitle = `${modeInfo.name} · ${tempText} · ${rpmText}`;
+        const curveName = telemetry.activeCurve ? (telemetry.activeCurve.charAt(0).toUpperCase() + telemetry.activeCurve.slice(1)) : 'Balanced';
+        this.subtitle = telemetry.autoMode 
+            ? `${modeInfo.name} · ${tempText} · ${rpmText} [${curveName}]`
+            : `${modeInfo.name} · ${tempText} · ${rpmText}`;
         this.checked = telemetry.autoMode || telemetry.activeMode === 'boost';
 
         // Update Telemetry Card values
@@ -756,6 +916,20 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             }
         }
 
+        // Update Curve Profile Button active styles
+        for (const [curveId, btn] of this._curveButtons.entries()) {
+            if (curveId === telemetry.activeCurve) {
+                btn.add_style_class_name('koolthing-button-active');
+            } else {
+                btn.remove_style_class_name('koolthing-button-active');
+            }
+        }
+
+        // Update Hardware Curve Badge
+        if (this._hwCurveBadge) {
+            this._hwCurveBadge.text = telemetry.hasHardwareCurve ? _('ASUS ACPI HW') : _('Software Governor');
+        }
+
         // Update Auto Governor Switch
         if (this._autoSwitch && this._autoSwitch.state !== telemetry.autoMode) {
             this._autoSwitch.setToggleState(telemetry.autoMode);
@@ -776,6 +950,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         }
         this._modeButtons.clear();
         this._batteryButtons.clear();
+        this._curveButtons.clear();
         super.destroy();
     }
 });

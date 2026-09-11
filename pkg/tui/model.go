@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -128,8 +129,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ErrMsg:
 		m.err = msg
-		m.statusMsg = fmt.Sprintf("Error: %v", msg)
+		errStr := msg.Error()
+		if strings.Contains(errStr, "not activatable") || strings.Contains(errStr, "connection to kuhlerprofild failed") {
+			m.statusMsg = "Daemon offline. Run: sudo systemctl start kuhlerprofil.service"
+		} else {
+			m.statusMsg = fmt.Sprintf("Error: %v", msg)
+		}
 		m.statusMsgExpiry = time.Now().Add(4 * time.Second)
+		m.connected = false
 		return m, nil
 
 	case tea.KeyMsg:
