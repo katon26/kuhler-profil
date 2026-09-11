@@ -1,7 +1,52 @@
+# ==========================================
+# 1. Secrets & Credentials
+# ==========================================
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+*.pem
+*.key
+*.pfx
+*.crt
+id_rsa
+id_ed25519
+
+# ==========================================
+# 2. Local Databases & Dumps
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.sql
+
+# ==========================================
+# 3. Build Outputs & Packages
+# ==========================================
 bin/
 *.out
 *.zip
 *.shell-extension.zip
+
+# ==========================================
+# 4. System Caches & OS Artifacts
+# ==========================================
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+
+# ==========================================
+# 5. Local Docs & Specifications
+# ==========================================
+docs/superpowers/
+docs/landing-page-materials.md
+
+# ==========================================
+# 6. Local SDK & Agent Framework Directories
+# ==========================================
 /.go_sdk/
 /.superpowers/
 /.agents/
