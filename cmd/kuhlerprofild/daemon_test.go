@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"koolthing/pkg/config"
-	"koolthing/pkg/driver"
-	"koolthing/pkg/engine"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/config"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/engine"
+	"kuhlerprofil/pkg/models"
 )
 
 func setupMockDriver() (driver.HardwareDriver, driver.FileSystem) {
@@ -73,12 +73,12 @@ func TestParseFlags(t *testing.T) {
 
 	t.Run("ShorthandConfigFlag", func(t *testing.T) {
 		var buf bytes.Buffer
-		opts, shouldExit, err := ParseFlags([]string{"-c", "/tmp/kool.toml"}, &buf)
+		opts, shouldExit, err := ParseFlags([]string{"-c", "/tmp/kuhler.toml"}, &buf)
 		if err != nil {
 			t.Fatalf("ParseFlags error: %v", err)
 		}
-		if shouldExit || opts.ConfigPath != "/tmp/kool.toml" {
-			t.Errorf("ConfigPath = %q, want /tmp/kool.toml", opts.ConfigPath)
+		if shouldExit || opts.ConfigPath != "/tmp/kuhler.toml" {
+			t.Errorf("ConfigPath = %q, want /tmp/kuhler.toml", opts.ConfigPath)
 		}
 	})
 
@@ -111,8 +111,11 @@ func TestParseFlags(t *testing.T) {
 		if opts != nil {
 			t.Errorf("expected nil opts on help exit")
 		}
-		if !strings.Contains(buf.String(), "Usage: koolthingd") {
+		if !strings.Contains(buf.String(), "Usage: kuhlerprofild") {
 			t.Errorf("help output %q does not contain usage", buf.String())
+		}
+		if !strings.Contains(buf.String(), "KühlerProfil Daemon (kuhlerprofild) v0.1.0") {
+			t.Errorf("help output %q does not contain banner", buf.String())
 		}
 	})
 
@@ -378,21 +381,21 @@ func TestProbeAndLogCapabilitiesVariations(t *testing.T) {
 }
 
 func TestSystemdServiceFile(t *testing.T) {
-	servicePath := filepath.Join("..", "..", "systemd", "koolthing.service")
+	servicePath := filepath.Join("..", "..", "systemd", "kuhlerprofil.service")
 	data, err := os.ReadFile(servicePath)
 	if err != nil {
-		t.Fatalf("failed to read systemd/koolthing.service: %v", err)
+		t.Fatalf("failed to read systemd/kuhlerprofil.service: %v", err)
 	}
 
 	content := string(data)
 	requiredStrings := []string{
 		"[Unit]",
-		"Description=KoolThing ASUS VivoBook Thermal, Fan & Battery Management Daemon",
+		"Description=KühlerProfil ASUS VivoBook Thermal, Fan & Battery Management Daemon",
 		"After=dbus.service systemd-suspend.service",
 		"Wants=dbus.service",
 		"[Service]",
 		"Type=simple",
-		"ExecStart=/usr/local/bin/koolthingd",
+		"ExecStart=/usr/local/bin/kuhlerprofild",
 		"Restart=always",
 		"RestartSec=3s",
 		"KillMode=process",

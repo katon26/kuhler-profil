@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"koolthing/pkg/config"
-	"koolthing/pkg/driver"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/config"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/models"
 )
 
 const (

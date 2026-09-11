@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"koolthing/pkg/dbusapi"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/dbusapi"
+	"kuhlerprofil/pkg/models"
 )
 
 // Message types for Bubbletea loop
@@ -33,7 +33,7 @@ type (
 	}
 )
 
-// Model represents the Bubbletea UI state machine for KoolThing.
+// Model represents the Bubbletea UI state machine for KühlerProfil.
 type Model struct {
 	client          *dbusapi.DBusClient
 	telemetry       models.Telemetry
@@ -207,7 +207,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the TUI screen.
 func (m Model) View() string {
 	if m.quitting {
-		return "Exiting KoolThing TUI. Goodbye!\n"
+		return "Exiting KühlerProfil TUI. Goodbye!\n"
 	}
 
 	dashboard := RenderDashboard(m.telemetry, m.width, m.height)

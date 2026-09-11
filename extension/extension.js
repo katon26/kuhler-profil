@@ -1,5 +1,5 @@
 /**
- * KoolThing GNOME Shell Quick Settings Extension
+ * KühlerProfil GNOME Shell Quick Settings Extension
  * Provides real-time thermal monitoring, fan RPM telemetry, ASUS thermal profile
  * switching, and battery charge threshold control over Linux D-Bus IPC.
  *
@@ -17,15 +17,15 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-export const DBUS_NAME = 'org.freedesktop.koolthing';
-export const DBUS_PATH = '/org/freedesktop/koolthing';
-export const DBUS_INTERFACE = 'org.freedesktop.koolthing';
+export const DBUS_NAME = 'org.freedesktop.kuhlerprofil';
+export const DBUS_PATH = '/org/freedesktop/kuhlerprofil';
+export const DBUS_INTERFACE = 'org.freedesktop.kuhlerprofil';
 
-export const KoolThingInterfaceXML = `
+export const KuhlerProfilInterfaceXML = `
 <!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
 "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <node>
-  <interface name="org.freedesktop.koolthing">
+  <interface name="org.freedesktop.kuhlerprofil">
     <method name="GetStatus">
       <arg name="status" type="a{sv}" direction="out"/>
     </method>
@@ -49,6 +49,8 @@ export const KoolThingInterfaceXML = `
     </signal>
   </interface>
 </node>`;
+
+export const KoolThingInterfaceXML = KuhlerProfilInterfaceXML;
 
 export const THERMAL_MODES = [
     { id: 'silent', name: _('Silent'), icon: 'power-profile-power-saver-symbolic', desc: _('Quiet') },
@@ -111,9 +113,9 @@ export function getModeInfo(mode) {
 }
 
 /**
- * Robust D-Bus client wrapper for org.freedesktop.koolthing.
+ * Robust D-Bus client wrapper for org.freedesktop.kuhlerprofil.
  */
-export class KoolThingDBusClient {
+export class KuhlerProfilDBusClient {
     constructor() {
         this._proxy = null;
         this._subscribers = new Set();
@@ -161,7 +163,7 @@ export class KoolThingDBusClient {
             try {
                 callback(this._lastTelemetry, this._connected);
             } catch (e) {
-                console.error(`[KoolThing] Subscriber initial callback error: ${e}`);
+                console.error(`[KühlerProfil] Subscriber initial callback error: ${e}`);
             }
         }
         return () => this._subscribers.delete(callback);
@@ -175,7 +177,7 @@ export class KoolThingDBusClient {
             try {
                 cb(this._lastTelemetry, this._connected);
             } catch (e) {
-                console.error(`[KoolThing] Error in subscriber callback: ${e}`);
+                console.error(`[KühlerProfil] Error in subscriber callback: ${e}`);
             }
         }
     }
@@ -199,16 +201,16 @@ export class KoolThingDBusClient {
 
     async _initProxy() {
         try {
-            const KoolThingProxyWrapper = Gio.DBusProxy.makeProxyWrapper(KoolThingInterfaceXML);
+            const KuhlerProfilProxyWrapper = Gio.DBusProxy.makeProxyWrapper(KuhlerProfilInterfaceXML);
             
-            // Try System bus first (standard for koolthingd daemon)
+            // Try System bus first (standard for kuhlerprofild daemon)
             let bus = Gio.DBus.system;
             if (!bus) {
                 bus = Gio.DBus.session;
             }
             this._connection = bus;
 
-            this._proxy = new KoolThingProxyWrapper(
+            this._proxy = new KuhlerProfilProxyWrapper(
                 bus,
                 DBUS_NAME,
                 DBUS_PATH,
@@ -279,7 +281,7 @@ export class KoolThingDBusClient {
                 );
             }
         } catch (e) {
-            console.error(`[KoolThing] Failed to bind signal listeners: ${e}`);
+            console.error(`[KühlerProfil] Failed to bind signal listeners: ${e}`);
         }
     }
 
@@ -310,7 +312,7 @@ export class KoolThingDBusClient {
                 }
             }
         } catch (e) {
-            console.error(`[KoolThing] Error processing bus signal ${signalName}: ${e}`);
+            console.error(`[KühlerProfil] Error processing bus signal ${signalName}: ${e}`);
         }
     }
 
@@ -393,14 +395,16 @@ export class KoolThingDBusClient {
     }
 }
 
+export const KoolThingDBusClient = KuhlerProfilDBusClient;
+
 /**
- * KoolThing Quick Menu Toggle for GNOME 45+ Quick Settings panel.
+ * KühlerProfil Quick Menu Toggle for GNOME 45+ Quick Settings panel.
  */
-export const KoolThingToggle = GObject.registerClass(
-class KoolThingToggle extends QuickSettings.QuickMenuToggle {
+export const KuhlerProfilToggle = GObject.registerClass(
+class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
     _init(extension, client, statusIndicator) {
         super._init({
-            title: _('KoolThing'),
+            title: _('KühlerProfil'),
             subtitle: _('Connecting...'),
             iconName: 'power-profile-balanced-symbolic',
             toggleMode: true,
@@ -429,7 +433,7 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
         // Set Header
         this.menu.setHeader(
             'power-profile-balanced-symbolic',
-            _('ASUS VivoBook Power & Fan'),
+            _('KühlerProfil'),
             _('Thermal Governor & Battery Health')
         );
 
@@ -573,7 +577,7 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
 
             btn.connect('clicked', () => {
                 this._client.setThermalMode(mode.id).catch(err => {
-                    console.error(`[KoolThing] Failed to set mode ${mode.id}: ${err}`);
+                    console.error(`[KühlerProfil] Failed to set mode ${mode.id}: ${err}`);
                 });
             });
 
@@ -620,7 +624,7 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
 
             btn.connect('clicked', () => {
                 this._client.setBatteryLimit(limit).catch(err => {
-                    console.error(`[KoolThing] Failed to set battery limit ${limit}%: ${err}`);
+                    console.error(`[KühlerProfil] Failed to set battery limit ${limit}%: ${err}`);
                 });
             });
 
@@ -641,7 +645,7 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
 
         this._autoSwitch.connect('toggled', (item, state) => {
             this._client.setAutoMode(state).catch(err => {
-                console.error(`[KoolThing] Failed to set auto mode: ${err}`);
+                console.error(`[KühlerProfil] Failed to set auto mode: ${err}`);
                 item.setToggleState(!state);
             });
         });
@@ -662,7 +666,7 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
         });
 
         this._statusLabel = new St.Label({
-            text: _('● koolthingd connected'),
+            text: _('● kuhlerprofild connected'),
             style_class: 'koolthing-status-text koolthing-status-ok',
             x_expand: true,
         });
@@ -687,7 +691,7 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
         else if (currentMode === 'boost') nextMode = 'silent';
 
         this._client.setThermalMode(nextMode).catch(err => {
-            console.error(`[KoolThing] Failed to cycle mode: ${err}`);
+            console.error(`[KühlerProfil] Failed to cycle mode: ${err}`);
         });
     }
 
@@ -760,7 +764,7 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
         // Update Footer Status
         if (this._statusLabel) {
             const govStatus = telemetry.autoMode ? _('Auto Governor Active') : _('Manual Profile');
-            this._statusLabel.text = `● koolthingd connected (${govStatus})`;
+            this._statusLabel.text = `● kuhlerprofild connected (${govStatus})`;
             this._statusLabel.style_class = 'koolthing-status-text koolthing-status-ok';
         }
     }
@@ -776,11 +780,13 @@ class KoolThingToggle extends QuickSettings.QuickMenuToggle {
     }
 });
 
+export const KoolThingToggle = KuhlerProfilToggle;
+
 /**
- * KoolThing System Indicator for GNOME 45+ Quick Settings.
+ * KühlerProfil System Indicator for GNOME 45+ Quick Settings.
  */
-export const KoolThingIndicator = GObject.registerClass(
-class KoolThingIndicator extends QuickSettings.SystemIndicator {
+export const KuhlerProfilIndicator = GObject.registerClass(
+class KuhlerProfilIndicator extends QuickSettings.SystemIndicator {
     _init(extension, client) {
         super._init();
         this._extension = extension;
@@ -790,7 +796,7 @@ class KoolThingIndicator extends QuickSettings.SystemIndicator {
         this._indicator.iconName = 'power-profile-balanced-symbolic';
         this._indicator.visible = true;
 
-        this._toggle = new KoolThingToggle(extension, client, this._indicator);
+        this._toggle = new KuhlerProfilToggle(extension, client, this._indicator);
         this.quickSettingsItems.push(this._toggle);
     }
 
@@ -803,13 +809,15 @@ class KoolThingIndicator extends QuickSettings.SystemIndicator {
     }
 });
 
+export const KoolThingIndicator = KuhlerProfilIndicator;
+
 /**
- * KoolThing Extension entry point.
+ * KühlerProfil Extension entry point.
  */
-export default class KoolThingExtension extends Extension {
+export default class KuhlerProfilExtension extends Extension {
     enable() {
-        this._client = new KoolThingDBusClient();
-        this._indicator = new KoolThingIndicator(this, this._client);
+        this._client = new KuhlerProfilDBusClient();
+        this._indicator = new KuhlerProfilIndicator(this, this._client);
 
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
         this._client.start();
@@ -827,3 +835,5 @@ export default class KoolThingExtension extends Extension {
         }
     }
 }
+
+export { KuhlerProfilExtension as KoolThingExtension };

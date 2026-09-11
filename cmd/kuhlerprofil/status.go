@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 func newStatusCmd(opts Options) *cobra.Command {
@@ -18,6 +18,9 @@ func newStatusCmd(opts Options) *cobra.Command {
 		Aliases: []string{"stat", "info"},
 		Short:   "Show current thermal, fan, and battery status",
 		Long:    "Query real-time hardware telemetry and daemon state including CPU temperature, fan RPMs, battery charge & limit, and active thermal profile.",
+		Example: `  kuhlerprofil status
+  kuhlerprofil status --json
+  kp status -j`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			telem, err := fetchTelemetry(opts)
 			if err != nil {
@@ -63,7 +66,7 @@ func fetchTelemetry(opts Options) (models.Telemetry, error) {
 		return telem, nil
 	}
 
-	return models.Telemetry{}, fmt.Errorf("failed to get status: koolthingd daemon is not running and direct driver read failed: %w (D-Bus: %v)", drvErr, dbusErr)
+	return models.Telemetry{}, fmt.Errorf("failed to get status: kuhlerprofild daemon is not running and direct driver read failed: %w (D-Bus: %v)", drvErr, dbusErr)
 }
 
 func formatStatusHuman(opts Options, t models.Telemetry) {
@@ -90,7 +93,7 @@ func formatStatusHuman(opts Options, t models.Telemetry) {
 		fan2Str = "0 RPM (Stopped / Idle)"
 	}
 
-	fmt.Fprintln(out, "KoolThing System Status")
+	fmt.Fprintln(out, "KühlerProfil System Status")
 	fmt.Fprintln(out, "──────────────────────────────────────────────────")
 	fmt.Fprintf(out, "  • Thermal Profile:   %s\n", modeFormatted)
 	fmt.Fprintf(out, "  • Auto Governor:     %s\n", autoStr)

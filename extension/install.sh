@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# KoolThing GNOME Shell Extension Installer
-# Installs KoolThing Quick Settings extension to ~/.local/share/gnome-shell/extensions/
+# KühlerProfil GNOME Shell Extension Installer
+# Installs KühlerProfil Quick Settings extension to ~/.local/share/gnome-shell/extensions/
 
 set -euo pipefail
 
-UUID="koolthing@asus-linux.org"
+UUID="kuhlerprofil@asus-linux.org"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXT_DEST="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 
@@ -24,7 +24,7 @@ ACTION="${1:-install}"
 
 case "${ACTION}" in
     install)
-        echo "Installing KoolThing GNOME Shell Extension (${UUID})..."
+        echo "Installing KühlerProfil GNOME Shell Extension (${UUID})..."
         mkdir -p "${EXT_DEST}"
         cp -v "${SCRIPT_DIR}/metadata.json" "${EXT_DEST}/"
         cp -v "${SCRIPT_DIR}/extension.js" "${EXT_DEST}/"
@@ -42,7 +42,7 @@ case "${ACTION}" in
         echo "Enabling ${UUID}..."
         if command -v gnome-extensions >/dev/null 2>&1; then
             gnome-extensions enable "${UUID}"
-            echo "KoolThing extension enabled."
+            echo "KühlerProfil extension enabled."
         else
             echo "Error: gnome-extensions command not found." >&2
             exit 1
@@ -53,7 +53,7 @@ case "${ACTION}" in
         echo "Disabling ${UUID}..."
         if command -v gnome-extensions >/dev/null 2>&1; then
             gnome-extensions disable "${UUID}"
-            echo "KoolThing extension disabled."
+            echo "KühlerProfil extension disabled."
         else
             echo "Error: gnome-extensions command not found." >&2
             exit 1
@@ -61,7 +61,7 @@ case "${ACTION}" in
         ;;
 
     uninstall)
-        echo "Uninstalling KoolThing GNOME Shell Extension..."
+        echo "Uninstalling KühlerProfil GNOME Shell Extension..."
         if command -v gnome-extensions >/dev/null 2>&1; then
             gnome-extensions disable "${UUID}" 2>/dev/null || true
         fi
@@ -69,7 +69,7 @@ case "${ACTION}" in
             rm -rf "${EXT_DEST}"
             echo "Removed ${EXT_DEST}"
         fi
-        echo "KoolThing extension uninstalled."
+        echo "KühlerProfil extension uninstalled."
         ;;
 
     pack)
@@ -86,7 +86,7 @@ case "${ACTION}" in
         ;;
 
     status)
-        echo "=== KoolThing Extension Status ==="
+        echo "=== KühlerProfil Extension Status ==="
         echo "Target UUID: ${UUID}"
         if [ -d "${EXT_DEST}" ]; then
             echo "Installation: INSTALLED at ${EXT_DEST}"

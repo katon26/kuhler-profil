@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
-	"koolthing/pkg/dbusapi"
-	"koolthing/pkg/driver"
-	"koolthing/pkg/tui"
+	"kuhlerprofil/pkg/dbusapi"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/tui"
 )
 
-// Version is the current release version of koolthing.
-const Version = "0.1.0"
+// Version is the current release version of kuhlerprofil.
+const Version = "v0.1.0"
 
 // Options allows dependency injection for testing and customization.
 type Options struct {
@@ -22,6 +24,7 @@ type Options struct {
 	TUIStarter    func(client *dbusapi.DBusClient) error
 	Out           io.Writer
 	ErrOut        io.Writer
+	BinaryName    string
 }
 
 func (o Options) getClient() (*dbusapi.DBusClient, error) {
@@ -61,12 +64,26 @@ func (o Options) startTUI(client *dbusapi.DBusClient) error {
 	return err
 }
 
-// NewRootCmd constructs the root Cobra command for koolthing.
+// NewRootCmd constructs the root Cobra command for kuhlerprofil.
 func NewRootCmd(opts Options) *cobra.Command {
+	binName := opts.BinaryName
+	if binName == "" {
+		binName = os.Args[0]
+	}
+	binName = filepath.Base(binName)
+	if binName == "" || binName == "." || strings.HasSuffix(binName, ".test") {
+		binName = "kuhlerprofil"
+	}
+
 	rootCmd := &cobra.Command{
-		Use:           "koolthing",
-		Short:         "KoolThing - ASUS Linux thermal, fan and battery management suite",
-		Long:          "KoolThing is a lightweight thermal, fan curve, and battery health charging management CLI and TUI for ASUS VivoBook and ROG Linux laptops.",
+		Use:   binName,
+		Short: "KühlerProfil - ASUS Linux thermal, fan and battery management suite",
+		Long:  "KühlerProfil is a lightweight thermal, fan curve, and battery health charging management CLI and TUI for ASUS VivoBook and ROG Linux laptops.",
+		Example: fmt.Sprintf(`  %[1]s status
+  %[1]s mode boost
+  %[1]s battery 80
+  %[1]s auto on
+  %[1]s tui`, binName),
 		Version:       Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,

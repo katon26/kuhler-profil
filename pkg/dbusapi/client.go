@@ -6,7 +6,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 // DBusCaller abstracts the low-level D-Bus bus object Call interface for testing and decoupling.
@@ -15,7 +15,7 @@ type DBusCaller interface {
 	CallWithContext(ctx context.Context, method string, flags dbus.Flags, args ...interface{}) *dbus.Call
 }
 
-// DBusClient provides a typed client wrapper to interact with the KoolThing daemon over D-Bus IPC.
+// DBusClient provides a typed client wrapper to interact with the KühlerProfil daemon over D-Bus IPC.
 type DBusClient struct {
 	conn     *dbus.Conn
 	caller   DBusCaller
@@ -63,7 +63,7 @@ func NewCustomClient(caller DBusCaller) *DBusClient {
 	}
 }
 
-// GetStatus queries the KoolThing daemon for live telemetry and hardware status.
+// GetStatus queries the KühlerProfil daemon for live telemetry and hardware status.
 func (c *DBusClient) GetStatus() (models.Telemetry, error) {
 	if c.caller == nil {
 		return models.Telemetry{}, fmt.Errorf("dbus client is not connected")

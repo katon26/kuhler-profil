@@ -2,3 +2,6 @@ bin/
 *.out
 *.zip
 *.shell-extension.zip
+/.go_sdk/
+/.superpowers/
+/.agents/

@@ -6,10 +6,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
-// RenderDashboard renders the entire KoolThing terminal dashboard.
+// RenderDashboard renders the entire KühlerProfil terminal dashboard.
 func RenderDashboard(status models.Telemetry, width int, height int) string {
 	if width <= 0 {
 		width = 80
@@ -21,16 +21,18 @@ func RenderDashboard(status models.Telemetry, width int, height int) string {
 	isCompact := width < 75
 
 	// 1. Header Section
+	headerTitle := " KühlerProfil ASUS Control "
 	var header string
 	if isCompact {
 		header = lipgloss.JoinVertical(
 			lipgloss.Left,
 			LogoBanner(true),
+			SubtitleStyle.Render(headerTitle),
 			"",
 		)
 	} else {
 		logo := LogoBanner(false)
-		sub := SubtitleStyle.Render("ASUS VivoBook Linux Thermal & Battery Control Suite")
+		sub := SubtitleStyle.Render(headerTitle)
 		header = lipgloss.JoinVertical(lipgloss.Left, logo, sub, "")
 	}
 

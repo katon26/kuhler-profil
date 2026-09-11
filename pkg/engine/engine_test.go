@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"koolthing/pkg/config"
-	"koolthing/pkg/driver"
-	"koolthing/pkg/engine"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/config"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/engine"
+	"kuhlerprofil/pkg/models"
 )
 
 func setupMockHardware() (driver.FileSystem, driver.HardwareDriver) {

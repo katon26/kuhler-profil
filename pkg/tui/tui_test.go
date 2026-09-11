@@ -10,9 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/godbus/dbus/v5"
 
-	"koolthing/pkg/dbusapi"
-	"koolthing/pkg/models"
-	"koolthing/pkg/tui"
+	"kuhlerprofil/pkg/dbusapi"
+	"kuhlerprofil/pkg/models"
+	"kuhlerprofil/pkg/tui"
 )
 
 // mockDBusCaller is a test helper satisfying dbusapi.DBusCaller.
@@ -193,8 +193,11 @@ func TestRenderDashboard(t *testing.T) {
 		t.Fatalf("RenderDashboard(80, 24) returned empty string")
 	}
 
-	if !strings.Contains(view, "KOOLTHING") {
-		t.Errorf("RenderDashboard missing title/banner 'KOOLTHING'")
+	if !strings.Contains(view, "KühlerProfil ASUS Control") {
+		t.Errorf("RenderDashboard missing header title 'KühlerProfil ASUS Control'")
+	}
+	if !strings.Contains(view, "KÜHLERPROFIL") {
+		t.Errorf("RenderDashboard missing title/banner 'KÜHLERPROFIL'")
 	}
 	if !strings.Contains(view, "Boost") && !strings.Contains(view, "BOOST") {
 		t.Errorf("RenderDashboard missing ActiveMode 'Boost'")
@@ -213,6 +216,12 @@ func TestRenderDashboard(t *testing.T) {
 	compactView := tui.RenderDashboard(status, 50, 20)
 	if len(compactView) == 0 {
 		t.Fatalf("RenderDashboard(50, 20) returned empty string")
+	}
+	if !strings.Contains(compactView, "KühlerProfil ASUS Control") {
+		t.Errorf("RenderDashboard compact missing header title 'KühlerProfil ASUS Control'")
+	}
+	if !strings.Contains(compactView, "KÜHLERPROFIL") {
+		t.Errorf("RenderDashboard compact missing title/banner 'KÜHLERPROFIL'")
 	}
 
 	// Wide terminal
@@ -296,7 +305,7 @@ func TestModelLifecycleAndKeybindings(t *testing.T) {
 	if quitCmd == nil {
 		t.Errorf("model.Update('q') did not return quitCmd")
 	}
-	if !strings.Contains(model.View(), "Exiting KoolThing") {
+	if !strings.Contains(model.View(), "Exiting KühlerProfil") {
 		t.Errorf("model.View() did not show exit greeting on quit")
 	}
 }

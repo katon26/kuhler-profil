@@ -3,7 +3,7 @@ package tui
 import (
 	"github.com/charmbracelet/lipgloss"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 // Color Palette definitions
@@ -185,11 +185,11 @@ func ModePill(mode models.ThermalMode, activeMode models.ThermalMode) string {
 // LogoBanner returns the ASCII art banner with styling.
 func LogoBanner(compact bool) string {
 	if compact {
-		return BannerStyle.Render("⚡ KOOLTHING") + " " + SubtitleStyle.Render(":: ASUS VivoBook Thermal Suite")
+		return BannerStyle.Render("⚡ KÜHLERPROFIL") + " " + SubtitleStyle.Render(":: ASUS Control Suite")
 	}
 
-	rawLogo := `█▄▀ █▀█ █▀█ █   ▀█▀ █ █ █ █▄ █ █▀▀   KOOLTHING
-█ █ █▄█ █▄█ █▄▄  █  █▀█ █ █ ▀█ █▄█   ASUS VivoBook Control`
+	rawLogo := `█▄▀ █ █ █ █ █   █▀▀ █▀█ █▀█ █▀█ █▀▀ █ █   KÜHLERPROFIL
+█ █ █▄█ █▀█ █▄▄ ██▄ █▀▄ █▀▀ █▀▄ █▄█ █ █▄▄ ASUS Control`
 
 	return BannerStyle.Render(rawLogo)
 }

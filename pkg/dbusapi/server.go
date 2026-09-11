@@ -8,21 +8,21 @@ import (
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/introspect"
 
-	"koolthing/pkg/engine"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/engine"
+	"kuhlerprofil/pkg/models"
 )
 
 const (
-	// Interface is the standard KoolThing D-Bus interface name.
-	Interface = "org.freedesktop.koolthing"
+	// Interface is the standard KühlerProfil D-Bus interface name.
+	Interface = "org.freedesktop.kuhlerprofil"
 	// InterfaceName is an alias for Interface.
 	InterfaceName = Interface
-	// Path is the standard KoolThing D-Bus object path.
-	Path = dbus.ObjectPath("/org/freedesktop/koolthing")
+	// Path is the standard KühlerProfil D-Bus object path.
+	Path = dbus.ObjectPath("/org/freedesktop/kuhlerprofil")
 	// ObjectPath is the string representation of Path.
-	ObjectPath = "/org/freedesktop/koolthing"
-	// ServiceName is the well-known bus name for KoolThing.
-	ServiceName = "org.freedesktop.koolthing"
+	ObjectPath = "/org/freedesktop/kuhlerprofil"
+	// ServiceName is the well-known bus name for KühlerProfil.
+	ServiceName = "org.freedesktop.kuhlerprofil"
 	// BusName is an alias for ServiceName.
 	BusName = ServiceName
 
@@ -45,7 +45,7 @@ const (
 const IntrospectionXML = `<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
 "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <node>
-  <interface name="org.freedesktop.koolthing">
+  <interface name="org.freedesktop.kuhlerprofil">
     <method name="GetStatus">
       <arg name="status" type="a{sv}" direction="out"/>
     </method>
@@ -185,7 +185,7 @@ func toInt32(val interface{}) int32 {
 	}
 }
 
-// DBusServer exposes the KoolThing engine to the Linux system bus via D-Bus IPC.
+// DBusServer exposes the KühlerProfil engine to the Linux system bus via D-Bus IPC.
 type DBusServer struct {
 	mu         sync.Mutex
 	eng        *engine.Engine
@@ -215,7 +215,7 @@ func (s *DBusServer) Export(conn *dbus.Conn, eng *engine.Engine) error {
 		s.eng = eng
 	}
 
-	// Export KoolThing interface methods
+	// Export KühlerProfil interface methods
 	if err := conn.Export(s, Path, Interface); err != nil {
 		return fmt.Errorf("failed to export D-Bus interface %s: %w", Interface, err)
 	}
@@ -350,7 +350,7 @@ func (s *DBusServer) GetStatus() (map[string]interface{}, *dbus.Error) {
 	s.mu.Unlock()
 
 	if eng == nil {
-		return nil, dbus.NewError("org.freedesktop.koolthing.Error.Unavailable", []interface{}{"engine not ready"})
+		return nil, dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
 	}
 
 	telem := eng.GetTelemetry()
@@ -361,7 +361,7 @@ func (s *DBusServer) GetStatus() (map[string]interface{}, *dbus.Error) {
 func (s *DBusServer) SetThermalMode(mode string) *dbus.Error {
 	m, err := models.ParseThermalMode(mode)
 	if err != nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.InvalidMode", []interface{}{err.Error()})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.InvalidMode", []interface{}{err.Error()})
 	}
 
 	s.mu.Lock()
@@ -369,11 +369,11 @@ func (s *DBusServer) SetThermalMode(mode string) *dbus.Error {
 	s.mu.Unlock()
 
 	if eng == nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.Unavailable", []interface{}{"engine not ready"})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
 	}
 
 	if err := eng.SetMode(m); err != nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.HardwareFailure", []interface{}{err.Error()})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.HardwareFailure", []interface{}{err.Error()})
 	}
 
 	return nil
@@ -382,7 +382,7 @@ func (s *DBusServer) SetThermalMode(mode string) *dbus.Error {
 // SetBatteryLimit configures the ASUS battery charge threshold (60%, 80%, 100%).
 func (s *DBusServer) SetBatteryLimit(limit int32) *dbus.Error {
 	if err := models.ValidateBatteryLimit(limit); err != nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.InvalidLimit", []interface{}{err.Error()})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.InvalidLimit", []interface{}{err.Error()})
 	}
 
 	s.mu.Lock()
@@ -390,11 +390,11 @@ func (s *DBusServer) SetBatteryLimit(limit int32) *dbus.Error {
 	s.mu.Unlock()
 
 	if eng == nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.Unavailable", []interface{}{"engine not ready"})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
 	}
 
 	if err := eng.SetBatteryLimit(limit); err != nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.HardwareFailure", []interface{}{err.Error()})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.HardwareFailure", []interface{}{err.Error()})
 	}
 
 	return nil
@@ -407,11 +407,11 @@ func (s *DBusServer) SetAutoMode(enabled bool) *dbus.Error {
 	s.mu.Unlock()
 
 	if eng == nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.Unavailable", []interface{}{"engine not ready"})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
 	}
 
 	if err := eng.SetAutoMode(enabled); err != nil {
-		return dbus.NewError("org.freedesktop.koolthing.Error.HardwareFailure", []interface{}{err.Error()})
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.HardwareFailure", []interface{}{err.Error()})
 	}
 
 	return nil

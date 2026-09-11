@@ -3,7 +3,7 @@ package models_test
 import (
 	"testing"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 func TestParseThermalMode(t *testing.T) {

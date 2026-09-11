@@ -1,4 +1,4 @@
-# ❄️ KoolThing
+# KühlerProfil
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![GNOME Shell](https://img.shields.io/badge/GNOME%20Shell-45%20--%2050-4a86cf?style=flat&logo=gnome)](https://extensions.gnome.org)
@@ -8,44 +8,45 @@
 
 > **High-Performance ASUS VivoBook & ZenBook Thermal, Dynamic Fan Curve, and Battery Care Management Suite for Linux.**
 
-KoolThing is a lightweight, zero-bloat system utility tailored specifically for ASUS laptops running Linux. Written entirely in pure Go with a companion GNOME Shell 45+ Quick Settings extension, KoolThing gives you seamless control over ASUS hardware thermal profiles, dual-fan RPM monitoring, automated thermal curve hysteresis, and hardware battery charge health limiting (60% / 80% / 100%).
+KühlerProfil is a lightweight, zero-bloat system utility tailored specifically for ASUS laptops running Linux. Written entirely in pure Go with a companion GNOME Shell 45+ Quick Settings extension, KühlerProfil gives you seamless control over ASUS hardware thermal profiles, dual-fan RPM monitoring, automated thermal curve hysteresis, and hardware battery charge health limiting (60% / 80% / 100%).
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
-- [Key Features](#-key-features)
-- [Architecture Overview](#-architecture-overview)
-- [Supported Hardware & Models](#-supported-hardware--models)
-- [Quick Start & Installation](#-quick-start--installation)
+- [Key Features](#key-features)
+- [Architecture Overview](#architecture-overview)
+- [Hardware Safety & Thermal Architecture](#hardware-safety--thermal-architecture)
+- [Supported Hardware & Models](#supported-hardware--models)
+- [Quick Start & Installation](#quick-start--installation)
   - [Prerequisites](#prerequisites)
   - [Build and Install Suite](#build-and-install-suite)
   - [Install GNOME Shell Extension](#install-gnome-shell-extension)
-- [CLI Reference](#-cli-reference)
-- [Interactive TUI Dashboard](#-interactive-tui-dashboard)
-- [GNOME Shell Quick Settings Extension](#-gnome-shell-quick-settings-extension)
-- [Configuration Reference](#-configuration-reference)
-- [D-Bus IPC API Specification](#-d-bus-ipc-api-specification)
-- [Troubleshooting & Diagnostics](#-troubleshooting--diagnostics)
-- [Contributing & Hacktoberfest](#-contributing--hacktoberfest)
-- [License](#-license)
+- [CLI Reference](#cli-reference)
+- [Interactive TUI Dashboard](#interactive-tui-dashboard)
+- [GNOME Shell Quick Settings Extension](#gnome-shell-quick-settings-extension)
+- [Configuration Reference](#configuration-reference)
+- [D-Bus IPC API Specification](#d-bus-ipc-api-specification)
+- [Troubleshooting & Diagnostics](#troubleshooting--diagnostics)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- 🚀 **Hardware Thermal Profiles**: Instant switching between ASUS hardware modes (`Silent`, `Standard`, `Boost`) via `asus-nb-wmi` sysfs and Linux ACPI platform profiles.
-- 🔋 **ASUS Battery Care Health Limiter**: Protect lithium-ion health by locking battery charge threshold to **60%**, **80%**, or **100%** (`charge_control_end_threshold`).
-- 🧠 **Dynamic Auto-Governor**: Intelligent hysteresis thermal governor that steps thermal profiles up under sustained load and safely steps them down when cool, eliminating noisy fan hunting.
-- 📊 **Real-time Dual Fan & CPU Telemetry**: Non-blocking asynchronous sampling of CPU package temperature and primary/secondary fan RPMs via Linux `hwmon`.
-- 💻 **Interactive Bubbletea TUI**: Gorgeous terminal dashboard with real-time ASCII telemetry gauges, battery status bars, and responsive single-key controls.
-- 🧩 **GNOME Shell 45+ Quick Settings**: Native GNOME top-bar integration with live telemetry subtitle, symbolic icons, and quick-toggle menu cards.
-- 🔒 **Security-Hardened D-Bus IPC**: Centralized `koolthingd` daemon running over `org.freedesktop.koolthing` system bus with polkit/D-Bus security policies allowing unprivileged desktop clients.
-- 🧪 **100% Mockable & Tested**: Zero required external C dependencies with fully mockable sysfs layers for deterministic unit and race testing.
+- **Hardware Thermal Profiles**: Instant switching between ASUS hardware modes (`Silent`, `Standard`, `Boost`) via `asus-nb-wmi` sysfs and Linux ACPI platform profiles.
+- **ASUS Battery Care Health Limiter**: Protect lithium-ion health by locking battery charge threshold to **60%**, **80%**, or **100%** (`charge_control_end_threshold`).
+- **Dynamic Auto-Governor**: Intelligent hysteresis thermal governor that steps thermal profiles up under sustained load and safely steps them down when cool, eliminating noisy fan hunting.
+- **Real-time Dual Fan & CPU Telemetry**: Non-blocking asynchronous sampling of CPU package temperature and primary/secondary fan RPMs via Linux `hwmon`.
+- **Interactive Bubbletea TUI**: Gorgeous terminal dashboard with real-time ASCII telemetry gauges, battery status bars, and responsive single-key controls.
+- **GNOME Shell 45+ Quick Settings**: Native GNOME top-bar integration with live telemetry subtitle, symbolic icons, and quick-toggle menu cards.
+- **Security-Hardened D-Bus IPC**: Centralized `kuhlerprofild` daemon running over `org.freedesktop.kuhlerprofil` system bus with polkit/D-Bus security policies allowing unprivileged desktop clients.
+- **100% Mockable & Tested**: Zero required external C dependencies with fully mockable sysfs layers for deterministic unit and race testing.
 
 ---
 
-## 🏛️ Architecture Overview
+## Architecture Overview
 
 ```mermaid
 flowchart TD
@@ -55,7 +56,7 @@ flowchart TD
         SYSFS_HWMON["/sys/class/hwmon/hwmon* (CPU Temp, Fan 1 & 2 RPM)"]
     end
 
-    subgraph CoreDaemon ["koolthingd Background Service"]
+    subgraph CoreDaemon ["kuhlerprofild Background Service"]
         DRIVER["pkg/driver: Hardware Sysfs Driver"]
         ENGINE["pkg/engine: Telemetry Engine & Auto-Governor"]
         CONFIG["pkg/config: TOML Config Manager"]
@@ -71,8 +72,8 @@ flowchart TD
     end
 
     subgraph Clients ["User Interfaces & Clients"]
-        DBUS_BUS["System D-Bus: org.freedesktop.koolthing"]
-        CLI["cmd/koolthing: Cobra CLI"]
+        DBUS_BUS["System D-Bus: org.freedesktop.kuhlerprofil"]
+        CLI["cmd/kuhlerprofil: Cobra CLI (aliases: kp, kuhler)"]
         TUI["pkg/tui: Bubbletea Terminal Dashboard"]
         GNOME_EXT["extension: GNOME Shell Quick Settings"]
 
@@ -85,9 +86,41 @@ flowchart TD
 
 ---
 
-## 💻 Supported Hardware & Models
+## Hardware Safety & Thermal Architecture
 
-KoolThing supports ASUS laptops featuring the `asus_nb_wmi` or `asus_wmi` kernel module, as well as laptops supporting Linux ACPI platform profiles:
+When managing system thermals, fan curves, and power thresholds on Linux, hardware safety and transparency are paramount. **KühlerProfil is designed to be completely non-destructive and failsafe by design.**
+
+### 1. Silicon & Firmware Hardware Overrides (PROCHOT & EC)
+- **No Direct Register or Port Bypasses:** KühlerProfil does **not** write to raw memory registers, raw I/O ports (`/dev/port`), or bypass EC firmware safety trips with forced PWM voltage overrides.
+- **Kernel-Standard Driver Communication:** All thermal mode operations interface strictly through the official Linux kernel driver:
+  ```
+  /sys/devices/platform/asus-nb-wmi/throttle_thermal_policy
+  ```
+  *(with standard fallbacks to `fan_boost_mode` and ACPI `platform_profile`).*
+- **Vendor Thermal Tables:** This interface corresponds directly to ASUS's built-in Embedded Controller (EC) profile tables (equivalent to pressing `Fn + F` on your keyboard or toggling modes in ASUS Armoury Crate / MyASUS on Windows):
+  - `0`: Standard / Balanced
+  - `1`: Boost / Performance
+  - `2`: Silent / Whisper
+- **Emergency Hardware Overrides Remain Active:** Modern AMD and Intel ASUS laptops enforce autonomous safety fuses at the silicon level. If CPU/GPU package temperatures spike toward dangerous trip points (e.g., 90°C–95°C), the laptop's hardware EC firmware and CPU hardware thermal trip (**BD PROCHOT**) will **always automatically override** any user-space profile to spin fans to maximum RPM or throttle CPU clocks, preventing heat damage even if KühlerProfil is active in "Silent" mode.
+
+### 2. Battery Health Care Limiter Safety
+- **Strict Input Validation:** Writes to `/sys/class/power_supply/BAT*/charge_control_end_threshold` are strictly validated before any sysfs operation occurs. Only the manufacturer-supported thresholds (**60%**, **80%**, and **100%**) are accepted.
+- **Hardware-Managed Charging:** This threshold communicates directly with the battery management IC on the motherboard to stop charging when the set capacity is reached. It does not stress the battery cells; keeping lithium-ion batteries capped at 60% or 80% while connected to AC power significantly mitigates degradation and prolongs battery lifespan.
+
+### 3. Failsafe Verification & Diagnostics
+Before deploying the background daemon, users can non-destructively probe their system without root privileges using the built-in dry-run diagnostic:
+```bash
+./bin/kuhlerprofild -dry-run
+# or
+make dry-run
+```
+This inspects and reports detected kernel endpoints, hwmon sensor channels, and battery controls before any daemon operations are initiated.
+
+---
+
+## Supported Hardware & Models
+
+KühlerProfil supports ASUS laptops featuring the `asus_nb_wmi` or `asus_wmi` kernel module, as well as laptops supporting Linux ACPI platform profiles:
 
 - **ASUS VivoBook Series**:
   - VivoBook S14 / S15 / S16 (K5404, S5404, M5402, M5502, S533, etc.)
@@ -106,7 +139,7 @@ KoolThing supports ASUS laptops featuring the `asus_nb_wmi` or `asus_wmi` kernel
 
 ---
 
-## 🚀 Quick Start & Installation
+## Quick Start & Installation
 
 ### Prerequisites
 
@@ -138,55 +171,61 @@ sudo pacman -S go make
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/asus-linux/koolthing.git
-cd koolthing
+git clone https://github.com/asus-linux/kuhler-profil.git
+cd kuhler-profil
 
 # 2. Compile both binaries (CLI & Daemon)
 make build
 
-# 3. Install daemon, CLI, systemd service, and D-Bus policy (requires root)
+# 3. Install daemon, CLI, symlinks (kp, kuhler), systemd service, and D-Bus policy (requires root)
 sudo make install
 
 # 4. Reload systemd & D-Bus, then enable the daemon
 sudo systemctl daemon-reload
 sudo systemctl reload dbus
-sudo systemctl enable --now koolthing.service
+sudo systemctl enable --now kuhlerprofil.service
 ```
 
 Verify the daemon is running properly:
 ```bash
-systemctl status koolthing.service
-koolthing status
+systemctl status kuhlerprofil.service
+kp status
+# or:
+kuhlerprofil status
 ```
 
 ---
 
 ### Install GNOME Shell Extension
 
-To install the KoolThing Quick Settings menu for GNOME 45, 46, 47, 48+:
+To install the KühlerProfil Quick Settings menu for GNOME 45, 46, 47, 48+:
 
 ```bash
 # Install extension to ~/.local/share/gnome-shell/extensions/
 make install-extension
 
 # If running Wayland, log out and log back in, or enable directly:
-gnome-extensions enable koolthing@asus-linux.org
+gnome-extensions enable kuhlerprofil@asus-linux.org
 ```
 
 ---
 
-## 🕹️ CLI Reference
+## CLI Reference
 
-The `koolthing` CLI provides full control over hardware profiles, battery thresholds, governor settings, and telemetry output.
+The `kuhlerprofil` CLI (and convenient `kp` short alias) provides full control over hardware profiles, battery thresholds, governor settings, and telemetry output.
+
+Both `kuhlerprofil` and `kp` (as well as `kuhler`) are symlinked and can be used interchangeably:
 
 ### 1. Show System Status
 
 ```bash
 # Human-readable dashboard summary
-koolthing status
+kp status
+# or:
+kuhlerprofil status
 
 # Machine-readable JSON output (ideal for scripts, Waybar, Polybar, Conky)
-koolthing status --json
+kp status --json
 ```
 
 **JSON Output Example:**
@@ -207,59 +246,63 @@ koolthing status --json
 
 ```bash
 # View active profile
-koolthing mode
+kp mode
 
 # Set thermal mode: silent (whisper quiet), standard (balanced), boost (max cooling)
-koolthing mode silent
-koolthing mode standard
-koolthing mode boost
+kp mode silent
+kp mode standard
+kp mode boost
 ```
 
 ### 3. Battery Health Care Limit
 
 ```bash
 # View active charge limit
-koolthing battery
+kp battery
 
 # Set battery charging limit to 60%, 80%, or 100%
-koolthing battery 60
-koolthing battery 80
-koolthing battery 100
+kp battery 60
+kp battery 80
+kp battery 100
 ```
 
 ### 4. Dynamic Auto-Governor
 
 ```bash
 # Query auto governor status
-koolthing auto
+kp auto
 
 # Enable / disable dynamic thermal curve governor
-koolthing auto on
-koolthing auto off
+kp auto on
+kp auto off
 ```
 
 ### 5. Interactive Terminal TUI
 
 ```bash
 # Launch full-screen interactive dashboard
-koolthing tui
+kp tui
+# or simply:
+kp
+# or:
+kuhlerprofil
 ```
 
 ---
 
-## 📊 Interactive TUI Dashboard
+## Interactive TUI Dashboard
 
-KoolThing includes a responsive terminal UI powered by [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
+KühlerProfil includes a responsive terminal UI powered by [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss).
 
 Run:
 ```bash
-koolthing tui
+kp tui
 # or simply:
-koolthing
+kp
 ```
 
 ```
-┌────────────────────────── KoolThing ASUS Control ──────────────────────────┐
+┌──────────────────────── KühlerProfil ASUS Control ─────────────────────────┐
 │ Profile: [ STANDARD ]     Governor: [ OFF ]             Power: [ AC Power ]│
 ├────────────────────────────────────────────────────────────────────────────┤
 │ CPU Temperature: 54.0°C   [██████████████████░░░░░░░░░░░░░░░░░░░░░░░░]     │
@@ -286,7 +329,7 @@ koolthing
 
 ---
 
-## 🧩 GNOME Shell Quick Settings Extension
+## GNOME Shell Quick Settings Extension
 
 The GNOME Shell extension integrates directly into the Quick Settings menu on GNOME 45, 46, 47, and 48+:
 
@@ -305,12 +348,12 @@ make install-extension
 
 ---
 
-## ⚙️ Configuration Reference
+## Configuration Reference
 
-Configuration files are loaded from `/etc/koolthing/config.toml` (system-wide) or `~/.config/koolthing/config.toml` (user-level override).
+Configuration files are loaded from `/etc/kuhlerprofil/config.toml` (system-wide) or `~/.config/kuhlerprofil/config.toml` (user-level override).
 
 ```toml
-# /etc/koolthing/config.toml
+# /etc/kuhlerprofil/config.toml
 
 # Default ASUS thermal profile on daemon boot: "silent", "standard", or "boost"
 default_mode = "standard"
@@ -331,13 +374,13 @@ hysteresis_step_down_temp = 55.0    # Temperature to step Boost -> Standard / Si
 
 ---
 
-## 🔌 D-Bus IPC API Specification
+## D-Bus IPC API Specification
 
-The `koolthingd` daemon registers on the Linux System Bus:
+The `kuhlerprofild` daemon registers on the Linux System Bus:
 
-- **Service Name**: `org.freedesktop.koolthing`
-- **Object Path**: `/org/freedesktop/koolthing`
-- **Interface**: `org.freedesktop.koolthing`
+- **Service Name**: `org.freedesktop.kuhlerprofil`
+- **Object Path**: `/org/freedesktop/kuhlerprofil`
+- **Interface**: `org.freedesktop.kuhlerprofil`
 
 ### Methods
 
@@ -360,18 +403,18 @@ The `koolthingd` daemon registers on the Linux System Bus:
 
 ```bash
 # Query status dictionary
-busctl call org.freedesktop.koolthing /org/freedesktop/koolthing org.freedesktop.koolthing GetStatus
+busctl call org.freedesktop.kuhlerprofil /org/freedesktop/kuhlerprofil org.freedesktop.kuhlerprofil GetStatus
 
 # Set thermal mode to boost
-busctl call org.freedesktop.koolthing /org/freedesktop/koolthing org.freedesktop.koolthing SetThermalMode s "boost"
+busctl call org.freedesktop.kuhlerprofil /org/freedesktop/kuhlerprofil org.freedesktop.kuhlerprofil SetThermalMode s "boost"
 
 # Set battery limit to 80%
-busctl call org.freedesktop.koolthing /org/freedesktop/koolthing org.freedesktop.koolthing SetBatteryLimit i 80
+busctl call org.freedesktop.kuhlerprofil /org/freedesktop/kuhlerprofil org.freedesktop.kuhlerprofil SetBatteryLimit i 80
 ```
 
 ---
 
-## 🔧 Troubleshooting & Diagnostics
+## Troubleshooting & Diagnostics
 
 ### 1. Hardware Probe Check (`make dry-run`)
 
@@ -380,15 +423,15 @@ Run a capability dry-run to inspect detected sysfs endpoints without needing roo
 ```bash
 make dry-run
 # or:
-./bin/koolthingd -dry-run
+./bin/kuhlerprofild -dry-run
 ```
 
 **Expected Output:**
 ```
-[koolthingd] Hardware capability probe:
-[koolthingd]   • Thermal mode control: true (policy: true, boost: false, profile: false, path: /sys/devices/platform/asus-nb-wmi/throttle_thermal_policy)
-[koolthingd]   • Battery charge limiter: true (path: /sys/class/power_supply/BAT0/charge_control_end_threshold)
-[koolthingd]   • Telemetry sensors: CPU temp=true, Fan1=true, Fan2=false (hwmon: /sys/class/hwmon/hwmon0)
+[kuhlerprofild] Hardware capability probe:
+[kuhlerprofild]   • Thermal mode control: true (policy: true, boost: false, profile: false, path: /sys/devices/platform/asus-nb-wmi/throttle_thermal_policy)
+[kuhlerprofild]   • Battery charge limiter: true (path: /sys/class/power_supply/BAT0/charge_control_end_threshold)
+[kuhlerprofild]   • Telemetry sensors: CPU temp=true, Fan1=true, Fan2=false (hwmon: /sys/class/hwmon/hwmon0)
 ```
 
 ### 2. Verify Kernel Module
@@ -406,11 +449,11 @@ sudo modprobe asus_nb_wmi
 
 ### 3. Check D-Bus Policy
 
-Ensure `/etc/dbus-1/system.d/org.freedesktop.koolthing.conf` exists and D-Bus is reloaded (`sudo systemctl reload dbus`).
+Ensure `/etc/dbus-1/system.d/org.freedesktop.kuhlerprofil.conf` exists and D-Bus is reloaded (`sudo systemctl reload dbus`).
 
 ---
 
-## 🛠️ Development & Testing
+## Development & Testing
 
 ```bash
 # Run unit test suite
@@ -428,9 +471,9 @@ make test-all
 
 ---
 
-## 🎃 Contributing & Hacktoberfest
+## Contributing
 
-Contributions are welcome! KoolThing is an open-source project designed for Linux laptop enthusiasts.
+Contributions are welcome! KühlerProfil is an open-source project designed for Linux laptop enthusiasts.
 
 1. **Fork the repository** on GitHub.
 2. **Create a feature branch** (`git checkout -b feature/amazing-feature`).
@@ -446,6 +489,7 @@ Contributions are welcome! KoolThing is an open-source project designed for Linu
 
 ---
 
-## 📜 License
+## License
 
-KoolThing is open-source software licensed under the [MIT License](LICENSE).
+KühlerProfil is open-source software licensed under the [MIT License](LICENSE).
+

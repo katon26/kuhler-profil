@@ -8,14 +8,18 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 const (
 	// DefaultSystemConfigPath is the primary system-wide configuration path.
-	DefaultSystemConfigPath = "/etc/koolthing/config.toml"
-	// DefaultUserConfigDir is the fallback user config folder under ~/.config.
-	DefaultUserConfigDir = "koolthing"
+	DefaultSystemConfigPath = "/etc/kuhlerprofil/config.toml"
+	// LegacySystemConfigPath is the legacy system-wide configuration path for backward compatibility.
+	LegacySystemConfigPath = "/etc/koolthing/config.toml"
+	// DefaultUserConfigDir is the primary user config folder under ~/.config.
+	DefaultUserConfigDir = "kuhlerprofil"
+	// LegacyUserConfigDir is the legacy user config folder under ~/.config for backward compatibility.
+	LegacyUserConfigDir = "koolthing"
 	// ConfigFileName is the standard configuration file name.
 	ConfigFileName = "config.toml"
 )
@@ -26,26 +30,41 @@ func Default() models.Config {
 }
 
 // DiscoverConfigPath determines the most appropriate configuration file path.
-// It checks for an existing system configuration at /etc/koolthing/config.toml first.
-// If not found, it checks the user's XDG config directory (~/.config/koolthing/config.toml).
-// If neither exists, it returns the system path if running as root (UID 0), or user path otherwise.
+// It checks for an existing system configuration at /etc/kuhlerprofil/config.toml first.
+// If not found, it checks the user's primary XDG config directory (~/.config/kuhlerprofil/config.toml).
+// If neither exists, it checks for legacy configuration files (/etc/koolthing/config.toml
+// and ~/.config/koolthing/config.toml) for backward compatibility.
+// If none exist, it returns the system path if running as root (UID 0), or user path otherwise.
 func DiscoverConfigPath() string {
-	// 1. If system config exists, prefer it
+	// 1. If primary system config exists, prefer it
 	if _, err := os.Stat(DefaultSystemConfigPath); err == nil {
 		return DefaultSystemConfigPath
 	}
 
-	// 2. Build user config path
-	userPath := getUserConfigPath()
+	// 2. Build primary user config path
+	userPath := getUserConfigPath(DefaultUserConfigDir)
 
-	// If user config exists, return it
+	// If primary user config exists, return it
 	if userPath != "" {
 		if _, err := os.Stat(userPath); err == nil {
 			return userPath
 		}
 	}
 
-	// 3. Fallback based on privilege
+	// 3. Check legacy system config path
+	if _, err := os.Stat(LegacySystemConfigPath); err == nil {
+		return LegacySystemConfigPath
+	}
+
+	// 4. Check legacy user config path
+	legacyUserPath := getUserConfigPath(LegacyUserConfigDir)
+	if legacyUserPath != "" {
+		if _, err := os.Stat(legacyUserPath); err == nil {
+			return legacyUserPath
+		}
+	}
+
+	// 5. Fallback based on privilege
 	if os.Geteuid() == 0 {
 		return DefaultSystemConfigPath
 	}
@@ -57,7 +76,7 @@ func DiscoverConfigPath() string {
 	return DefaultSystemConfigPath
 }
 
-func getUserConfigPath() string {
+func getUserConfigPath(configDir string) string {
 	configHome := os.Getenv("XDG_CONFIG_HOME")
 	if configHome == "" {
 		home, err := os.UserHomeDir()
@@ -66,7 +85,7 @@ func getUserConfigPath() string {
 		}
 		configHome = filepath.Join(home, ".config")
 	}
-	return filepath.Join(configHome, DefaultUserConfigDir, ConfigFileName)
+	return filepath.Join(configHome, configDir, ConfigFileName)
 }
 
 // Load reads and parses a TOML configuration file.

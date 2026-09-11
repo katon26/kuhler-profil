@@ -14,16 +14,16 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"koolthing/pkg/config"
-	"koolthing/pkg/dbusapi"
-	"koolthing/pkg/driver"
-	"koolthing/pkg/engine"
+	"kuhlerprofil/pkg/config"
+	"kuhlerprofil/pkg/dbusapi"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/engine"
 )
 
-// Version is the current semantic release version of koolthingd.
+// Version is the current semantic release version of kuhlerprofild.
 const Version = "0.1.0"
 
-// DaemonOptions holds configuration and runtime options for koolthingd.
+// DaemonOptions holds configuration and runtime options for kuhlerprofild.
 type DaemonOptions struct {
 	ConfigPath string
 	DryRun     bool
@@ -53,7 +53,7 @@ func NewDaemon(opts DaemonOptions) *Daemon {
 	if out == nil {
 		out = os.Stdout
 	}
-	logger := log.New(out, "[koolthingd] ", log.LstdFlags)
+	logger := log.New(out, "[kuhlerprofild] ", log.LstdFlags)
 
 	drv := opts.Driver
 	if drv == nil {
@@ -97,7 +97,7 @@ func (d *Daemon) ProbeAndLogCapabilities() driver.DriverCaps {
 // Run executes the daemon lifecycle: probes hardware, loads configuration,
 // starts telemetry engine, exports D-Bus service, and manages signals until context cancellation.
 func (d *Daemon) Run(ctx context.Context) error {
-	d.logger.Printf("Starting KoolThing Daemon v%s (PID: %d, UID: %d)", Version, os.Getpid(), os.Geteuid())
+	d.logger.Printf("Starting KühlerProfil Daemon v%s (PID: %d, UID: %d)", Version, os.Getpid(), os.Geteuid())
 
 	if os.Geteuid() != 0 && !d.opts.DryRun {
 		d.logger.Printf("[WARN] Running without root privileges (UID: %d). Modifying sysfs and system D-Bus may require CAP_SYS_ADMIN or root.", os.Geteuid())
@@ -183,7 +183,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		defer signal.Stop(hupChan)
 	}
 
-	d.logger.Printf("koolthingd daemon is active and listening for requests (press Ctrl+C or send SIGTERM to stop)...")
+	d.logger.Printf("kuhlerprofild daemon is active and listening for requests (press Ctrl+C or send SIGTERM to stop)...")
 
 	// 8. Main Daemon Event Loop
 	for {
@@ -204,7 +204,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 			if dbusConn != nil && ownsConn {
 				_ = dbusConn.Close()
 			}
-			d.logger.Printf("koolthingd daemon stopped cleanly.")
+			d.logger.Printf("kuhlerprofild daemon stopped cleanly.")
 			return nil
 
 		case <-hupChan:
@@ -255,22 +255,22 @@ func (d *Daemon) ReloadConfig() error {
 // ParseFlags parses command line arguments and returns configured DaemonOptions.
 // If help or version flags were requested, shouldExit returns true.
 func ParseFlags(args []string, out io.Writer) (*DaemonOptions, bool, error) {
-	flags := flag.NewFlagSet("koolthingd", flag.ContinueOnError)
+	flags := flag.NewFlagSet("kuhlerprofild", flag.ContinueOnError)
 	flags.SetOutput(out)
 
-	configPath := flags.String("config", "", "Path to configuration file (/etc/koolthing/config.toml)")
+	configPath := flags.String("config", "", "Path to configuration file (/etc/kuhlerprofil/config.toml)")
 	flags.StringVar(configPath, "c", "", "Path to configuration file (shorthand)")
 
 	dryRun := flags.Bool("dry-run", false, "Probe hardware and print capabilities then exit")
 	verbose := flags.Bool("verbose", false, "Enable verbose debug logging")
 	flags.BoolVar(verbose, "v", false, "Enable verbose debug logging (shorthand)")
 
-	versionFlag := flags.Bool("version", false, "Print koolthingd version")
+	versionFlag := flags.Bool("version", false, "Print kuhlerprofild version")
 
 	flags.Usage = func() {
-		fmt.Fprintf(out, "KoolThing Daemon (koolthingd) v%s\n", Version)
+		fmt.Fprintf(out, "KühlerProfil Daemon (kuhlerprofild) v%s\n", Version)
 		fmt.Fprintf(out, "ASUS VivoBook Thermal, Fan and Battery Management Background Service\n\n")
-		fmt.Fprintf(out, "Usage: koolthingd [options]\n\n")
+		fmt.Fprintf(out, "Usage: kuhlerprofild [options]\n\n")
 		fmt.Fprintf(out, "Options:\n")
 		flags.PrintDefaults()
 	}
@@ -283,7 +283,7 @@ func ParseFlags(args []string, out io.Writer) (*DaemonOptions, bool, error) {
 	}
 
 	if *versionFlag {
-		fmt.Fprintf(out, "koolthingd v%s\n", Version)
+		fmt.Fprintf(out, "kuhlerprofild v%s\n", Version)
 		return nil, true, nil
 	}
 
@@ -311,6 +311,6 @@ func main() {
 
 	daemon := NewDaemon(*opts)
 	if err := daemon.Run(ctx); err != nil {
-		log.Fatalf("[FATAL] koolthingd runtime error: %v", err)
+		log.Fatalf("[FATAL] kuhlerprofild runtime error: %v", err)
 	}
 }

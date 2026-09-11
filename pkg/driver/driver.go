@@ -1,7 +1,7 @@
 package driver
 
 import (
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 // DriverCaps summarizes the detected hardware control capabilities and sysfs paths.

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"koolthing/pkg/config"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/config"
+	"kuhlerprofil/pkg/models"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -157,3 +157,38 @@ func TestDiscoverConfigPath(t *testing.T) {
 		t.Errorf("DiscoverConfigPath = %s, want %s or system path", discovered, cfgFile)
 	}
 }
+
+func TestDiscoverConfigPath_LegacyFallback(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "kuhlerprofil-xdg-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	origXDG := os.Getenv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer os.Setenv("XDG_CONFIG_HOME", origXDG)
+
+	// Create legacy user config file only
+	legacyDir := filepath.Join(tmpDir, config.LegacyUserConfigDir)
+	_ = os.MkdirAll(legacyDir, 0755)
+	legacyFile := filepath.Join(legacyDir, config.ConfigFileName)
+	_ = os.WriteFile(legacyFile, []byte("default_mode = \"silent\"\n"), 0644)
+
+	discovered := config.DiscoverConfigPath()
+	if discovered != legacyFile && discovered != config.DefaultSystemConfigPath && discovered != config.LegacySystemConfigPath {
+		t.Errorf("DiscoverConfigPath = %s, want legacy user path %s", discovered, legacyFile)
+	}
+
+	// Now create primary user config file as well - primary must take precedence over legacy
+	primaryDir := filepath.Join(tmpDir, config.DefaultUserConfigDir)
+	_ = os.MkdirAll(primaryDir, 0755)
+	primaryFile := filepath.Join(primaryDir, config.ConfigFileName)
+	_ = os.WriteFile(primaryFile, []byte("default_mode = \"boost\"\n"), 0644)
+
+	discoveredPrimary := config.DiscoverConfigPath()
+	if discoveredPrimary != primaryFile && discoveredPrimary != config.DefaultSystemConfigPath {
+		t.Errorf("DiscoverConfigPath with both present = %s, want primary %s", discoveredPrimary, primaryFile)
+	}
+}
+

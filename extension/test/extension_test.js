@@ -1,5 +1,5 @@
 /**
- * KoolThing GNOME Shell Extension Test & Verification Suite
+ * KühlerProfil GNOME Shell Extension Test & Verification Suite
  * Validates manifest syntax, stylesheet classes, ESM export syntax,
  * D-Bus XML interface parity, and telemetry parsing logic.
  */
@@ -29,7 +29,7 @@ function runTest(name, testFn) {
     }
 }
 
-console.log('=== KoolThing GNOME Shell Extension Test Suite ===\n');
+console.log('=== KühlerProfil GNOME Shell Extension Test Suite ===\n');
 
 // 1. Validate metadata.json
 runTest('metadata.json exists and is valid JSON', () => {
@@ -38,8 +38,8 @@ runTest('metadata.json exists and is valid JSON', () => {
     const content = fs.readFileSync(metadataPath, 'utf8');
     const metadata = JSON.parse(content);
 
-    assert.equal(metadata.uuid, 'koolthing@asus-linux.org', 'UUID must match koolthing@asus-linux.org');
-    assert(metadata.name && metadata.name.includes('KoolThing'), 'Name must contain KoolThing');
+    assert.equal(metadata.uuid, 'kuhlerprofil@asus-linux.org', 'UUID must match kuhlerprofil@asus-linux.org');
+    assert(metadata.name && metadata.name.includes('KühlerProfil'), 'Name must contain KühlerProfil');
     assert(Array.isArray(metadata['shell-version']), 'shell-version must be an array');
     assert(metadata['shell-version'].includes('45'), 'shell-version must support GNOME 45');
     assert(metadata['shell-version'].includes('46'), 'shell-version must support GNOME 46');
@@ -74,7 +74,7 @@ runTest('install.sh exists, is executable, and contains correct UUID', () => {
     const installPath = path.join(EXTENSION_DIR, 'install.sh');
     assert(fs.existsSync(installPath), 'install.sh must exist');
     const content = fs.readFileSync(installPath, 'utf8');
-    assert(content.includes('UUID="koolthing@asus-linux.org"'), 'install.sh must define extension UUID');
+    assert(content.includes('UUID="kuhlerprofil@asus-linux.org"'), 'install.sh must define extension UUID');
     assert(content.includes('metadata.json') && content.includes('extension.js'), 'install.sh must copy extension files');
 });
 
@@ -85,7 +85,7 @@ runTest('extension.js defines matching D-Bus interface and signatures', () => {
     const code = fs.readFileSync(extPath, 'utf8');
 
     // Verify D-Bus interface name
-    assert(code.includes('org.freedesktop.koolthing'), 'Must define org.freedesktop.koolthing interface');
+    assert(code.includes('org.freedesktop.kuhlerprofil'), 'Must define org.freedesktop.kuhlerprofil interface');
 
     // Verify Methods
     assert(code.includes('name="GetStatus"'), 'Must define GetStatus method');
@@ -101,7 +101,7 @@ runTest('extension.js defines matching D-Bus interface and signatures', () => {
     // Verify QuickSettings and Extension usage
     assert(code.includes('QuickSettings.QuickMenuToggle'), 'Must subclass QuickMenuToggle');
     assert(code.includes('QuickSettings.SystemIndicator'), 'Must subclass SystemIndicator');
-    assert(code.includes('export default class KoolThingExtension extends Extension'), 'Must export Extension class');
+    assert(code.includes('export default class KuhlerProfilExtension extends Extension') || code.includes('export default class KoolThingExtension extends Extension'), 'Must export Extension class');
 });
 
 // 5. Unit test telemetry parsing and unwrap functions

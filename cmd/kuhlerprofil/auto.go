@@ -12,7 +12,10 @@ func newAutoCmd(opts Options) *cobra.Command {
 		Use:     "auto [on|off]",
 		Aliases: []string{"governor", "curve"},
 		Short:   "Enable or disable automatic thermal fan curve governor",
-		Long:    "Query or configure the automated dynamic fan curve governor in koolthingd.",
+		Long:    "Query or configure the automated dynamic fan curve governor in kuhlerprofild.",
+		Example: `  kuhlerprofil auto
+  kuhlerprofil auto on
+  kp auto off`,
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -40,7 +43,7 @@ func newAutoCmd(opts Options) *cobra.Command {
 
 			client, clientErr := opts.getClient()
 			if clientErr != nil || client == nil {
-				return fmt.Errorf("failed to set auto governor: koolthingd daemon is not running (required for auto-governor): %w", clientErr)
+				return fmt.Errorf("failed to set auto governor: kuhlerprofild daemon is not running (required for auto-governor): %w", clientErr)
 			}
 
 			if err := client.SetAutoMode(enabled); err != nil {

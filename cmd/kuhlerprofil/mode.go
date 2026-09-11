@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 func newModeCmd(opts Options) *cobra.Command {
@@ -14,6 +14,9 @@ func newModeCmd(opts Options) *cobra.Command {
 		Aliases: []string{"profile", "thermal"},
 		Short:   "Get or set ASUS thermal profile",
 		Long:    "Query or switch the active ASUS platform thermal profile mode (silent, standard, or boost).",
+		Example: `  kuhlerprofil mode
+  kuhlerprofil mode silent
+  kp mode boost`,
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -45,7 +48,7 @@ func newModeCmd(opts Options) *cobra.Command {
 				fmt.Fprintf(opts.getOut(), "Thermal mode set to: %s (direct driver)\n", mode)
 				return nil
 			} else {
-				return fmt.Errorf("failed to set thermal mode: koolthingd daemon is not running and direct driver write failed: %w", drvErr)
+				return fmt.Errorf("failed to set thermal mode: kuhlerprofild daemon is not running and direct driver write failed: %w", drvErr)
 			}
 		},
 	}

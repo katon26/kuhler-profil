@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
 
-	"koolthing/pkg/dbusapi"
-	"koolthing/pkg/driver"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/dbusapi"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/models"
 )
 
 // mockCaller implements dbusapi.DBusCaller for testing CLI subcommands.
@@ -32,7 +33,7 @@ func (m *mockCaller) Call(method string, flags dbus.Flags, args ...interface{}) 
 	}
 
 	if m.returnError {
-		call.Err = errors.New("connection to koolthingd failed")
+		call.Err = errors.New("connection to kuhlerprofild failed")
 		call.Done <- call
 		return call
 	}
@@ -173,6 +174,10 @@ func TestHelpFlag(t *testing.T) {
 	}
 
 	helpOutput := out.String()
+	if !strings.Contains(helpOutput, "KühlerProfil is a lightweight thermal") {
+		t.Errorf("expected help output to mention KühlerProfil description, got:\n%s", helpOutput)
+	}
+
 	subcommands := []string{"status", "mode", "battery", "auto", "tui"}
 	for _, sub := range subcommands {
 		if !strings.Contains(helpOutput, sub) {
@@ -194,6 +199,70 @@ func TestVersionFlag(t *testing.T) {
 
 	if !strings.Contains(out.String(), Version) {
 		t.Errorf("expected output to contain version %s, got: %s", Version, out.String())
+	}
+	if Version != "v0.1.0" {
+		t.Errorf("Version = %q, want 'v0.1.0'", Version)
+	}
+}
+
+func TestRootCommand_BinaryNameAliases(t *testing.T) {
+	testCases := []struct {
+		name        string
+		binName     string
+		expectedUse string
+	}{
+		{"Default", "", "kuhlerprofil"},
+		{"KuhlerProfil", "kuhlerprofil", "kuhlerprofil"},
+		{"KP", "kp", "kp"},
+		{"Kuhler", "kuhler", "kuhler"},
+		{"FullPathKP", "/usr/local/bin/kp", "kp"},
+		{"FullPathKuhler", "/usr/bin/kuhler", "kuhler"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts, out, _ := setupTestEnvironment(nil, nil)
+			opts.BinaryName = tc.binName
+			cmd := NewRootCmd(opts)
+			if cmd.Use != tc.expectedUse {
+				t.Errorf("cmd.Use = %q, want %q", cmd.Use, tc.expectedUse)
+			}
+			cmd.SetArgs([]string{"--help"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("unexpected error executing --help: %v", err)
+			}
+			helpText := out.String()
+			if !strings.Contains(helpText, "KühlerProfil is a lightweight thermal") {
+				t.Errorf("expected help text to contain KühlerProfil description, got: %s", helpText)
+			}
+			if !strings.Contains(helpText, tc.expectedUse+" status") {
+				t.Errorf("expected help text examples to use %q, got: %s", tc.expectedUse, helpText)
+			}
+		})
+	}
+}
+
+func TestRootCommand_OSArgsDetection(t *testing.T) {
+	origArgs := os.Args
+	defer func() { os.Args = origArgs }()
+
+	os.Args = []string{"/usr/bin/kp"}
+	opts, _, _ := setupTestEnvironment(nil, nil)
+	cmd := NewRootCmd(opts)
+	if cmd.Use != "kp" {
+		t.Errorf("cmd.Use from os.Args = %q, want 'kp'", cmd.Use)
+	}
+
+	os.Args = []string{"/usr/local/bin/kuhler"}
+	cmd2 := NewRootCmd(opts)
+	if cmd2.Use != "kuhler" {
+		t.Errorf("cmd2.Use from os.Args = %q, want 'kuhler'", cmd2.Use)
+	}
+
+	os.Args = []string{"/usr/local/bin/kuhlerprofil"}
+	cmd3 := NewRootCmd(opts)
+	if cmd3.Use != "kuhlerprofil" {
+		t.Errorf("cmd3.Use from os.Args = %q, want 'kuhlerprofil'", cmd3.Use)
 	}
 }
 
@@ -311,7 +380,7 @@ func TestStatusCmd_FailureWhenBothDBusAndDriverFail(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when both D-Bus and driver fail, got nil")
 	}
-	if !strings.Contains(err.Error(), "koolthingd daemon is not running") {
+	if !strings.Contains(err.Error(), "kuhlerprofild daemon is not running") {
 		t.Errorf("expected error to mention daemon not running, got: %v", err)
 	}
 }
@@ -629,7 +698,7 @@ func TestAutoCmd_RequiresDaemonWhenDBusFails(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when setting auto with D-Bus failure, got nil")
 	}
-	if !strings.Contains(err.Error(), "koolthingd") {
-		t.Errorf("expected error to mention koolthingd daemon, got: %v", err)
+	if !strings.Contains(err.Error(), "kuhlerprofild") {
+		t.Errorf("expected error to mention kuhlerprofild daemon, got: %v", err)
 	}
 }

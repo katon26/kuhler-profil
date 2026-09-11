@@ -10,10 +10,10 @@ import (
 
 	"github.com/godbus/dbus/v5"
 
-	"koolthing/pkg/dbusapi"
-	"koolthing/pkg/driver"
-	"koolthing/pkg/engine"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/dbusapi"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/engine"
+	"kuhlerprofil/pkg/models"
 )
 
 // TestDBusSignatureAndMarshaling tests mapping between models.Telemetry and D-Bus payload maps.
@@ -457,10 +457,10 @@ func TestIntrospectionXML(t *testing.T) {
 		t.Fatalf("IntrospectionXML is not valid XML: %v", err)
 	}
 
-	foundKoolthing := false
+	foundKuhlerprofil := false
 	for _, iface := range parsed.Interfaces {
 		if iface.Name == dbusapi.Interface {
-			foundKoolthing = true
+			foundKuhlerprofil = true
 			methods := make(map[string]bool)
 			for _, m := range iface.Methods {
 				methods[m.Name] = true
@@ -479,14 +479,14 @@ func TestIntrospectionXML(t *testing.T) {
 		}
 	}
 
-	if !foundKoolthing {
+	if !foundKuhlerprofil {
 		t.Errorf("interface %s not found in introspection XML", dbusapi.Interface)
 	}
 }
 
-// TestSecurityPolicyFile validates the systemd/org.freedesktop.koolthing.conf D-Bus policy XML file.
+// TestSecurityPolicyFile validates the systemd/org.freedesktop.kuhlerprofil.conf D-Bus policy XML file.
 func TestSecurityPolicyFile(t *testing.T) {
-	policyPath := "../../systemd/org.freedesktop.koolthing.conf"
+	policyPath := "../../systemd/org.freedesktop.kuhlerprofil.conf"
 	data, err := os.ReadFile(policyPath)
 	if err != nil {
 		t.Fatalf("failed to read security policy file %s: %v", policyPath, err)
@@ -512,6 +512,18 @@ func TestSecurityPolicyFile(t *testing.T) {
 
 	if len(parsed.Policies) < 2 {
 		t.Errorf("expected at least 2 policy blocks (root user and default context), got %d", len(parsed.Policies))
+	}
+
+	foundOwn := false
+	for _, p := range parsed.Policies {
+		for _, a := range p.Allows {
+			if a.Own == dbusapi.ServiceName {
+				foundOwn = true
+			}
+		}
+	}
+	if !foundOwn {
+		t.Errorf("policy file missing allow own=%q", dbusapi.ServiceName)
 	}
 }
 

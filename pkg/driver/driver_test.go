@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"koolthing/pkg/driver"
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/driver"
+	"kuhlerprofil/pkg/models"
 )
 
 func TestDriverWithMockFS(t *testing.T) {

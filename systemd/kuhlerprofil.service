@@ -1,11 +1,11 @@
 [Unit]
-Description=KoolThing ASUS VivoBook Thermal, Fan & Battery Management Daemon
+Description=KühlerProfil ASUS VivoBook Thermal, Fan & Battery Management Daemon
 After=dbus.service systemd-suspend.service
 Wants=dbus.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/koolthingd
+ExecStart=/usr/local/bin/kuhlerprofild
 Restart=always
 RestartSec=3s
 KillMode=process

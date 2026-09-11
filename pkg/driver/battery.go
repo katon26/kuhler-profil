@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 var (

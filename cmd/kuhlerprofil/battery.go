@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 func newBatteryCmd(opts Options) *cobra.Command {
@@ -15,6 +15,10 @@ func newBatteryCmd(opts Options) *cobra.Command {
 		Aliases: []string{"bat", "charge"},
 		Short:   "Get or set battery health charging limit (60, 80, 100)",
 		Long:    "Query or configure the ASUS Battery Care health threshold (60%, 80%, or 100%) to prolong battery lifespan.",
+		Example: `  kuhlerprofil battery
+  kuhlerprofil battery 80
+  kp battery 60
+  kp battery limit 100`,
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -81,6 +85,6 @@ func applyBatteryLimit(opts Options, limitStr string) error {
 		fmt.Fprintf(opts.getOut(), "Battery charge limit set to: %d%% (direct driver)\n", intLimit)
 		return nil
 	} else {
-		return fmt.Errorf("failed to set battery limit: koolthingd daemon is not running and direct driver write failed: %w", drvErr)
+		return fmt.Errorf("failed to set battery limit: kuhlerprofild daemon is not running and direct driver write failed: %w", drvErr)
 	}
 }

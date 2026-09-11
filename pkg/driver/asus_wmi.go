@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"koolthing/pkg/models"
+	"kuhlerprofil/pkg/models"
 )
 
 // ThermalInterfaceType indicates the specific sysfs mechanism used for thermal control.
