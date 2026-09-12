@@ -328,6 +328,25 @@ func (e *Engine) SetAutoMode(enabled bool) error {
 		for f := 1; f <= fanCount; f++ {
 			_ = e.driver.SetHardwareCurveEnabled(f, modeVal)
 		}
+	} else if enabled {
+		// Software governor: immediately evaluate target mode and apply it to hardware
+		profName := e.cfg.ActiveCurveProfile
+		profile, ok := e.cfg.Curves[profName]
+		if !ok {
+			defaults := models.DefaultCurveProfiles()
+			if defProf, defOk := defaults[profName]; defOk {
+				profile = defProf
+			} else {
+				profile = defaults["balanced"]
+			}
+		}
+		targetMode := evaluateCurveProfile(profile, e.telemetry.CPUTemp, "", e.cfg.DefaultMode)
+		if targetMode != "" {
+			if err := e.driver.SetThermalMode(targetMode); err == nil {
+				e.telemetry.ActiveMode = targetMode
+				e.lastModeChange = time.Now()
+			}
+		}
 	}
 
 	snapshot := e.telemetry
@@ -406,6 +425,16 @@ func (e *Engine) SetCurveProfile(profileName string) error {
 			_ = e.driver.WriteHardwareCurve(f, profile.Points)
 			if e.autoMode {
 				_ = e.driver.SetHardwareCurveEnabled(f, 1)
+			}
+		}
+	} else if e.autoMode {
+		// Software governor path: immediately evaluate target mode for the newly chosen profile
+		// using clean initial evaluation so switching to "quiet" at 60°C immediately activates Silent mode!
+		targetMode := evaluateCurveProfile(profile, e.telemetry.CPUTemp, "", e.cfg.DefaultMode)
+		if targetMode != "" {
+			if err := e.driver.SetThermalMode(targetMode); err == nil {
+				e.telemetry.ActiveMode = targetMode
+				e.lastModeChange = time.Now()
 			}
 		}
 	}
@@ -550,7 +579,7 @@ func evaluateCurveProfile(profile models.CurveProfile, temp float64, currentMode
 		if temp >= boostUp {
 			return models.ModeBoost
 		}
-		if hasSilent && temp <= silentDown {
+		if hasSilent && temp < standardUp {
 			return models.ModeSilent
 		}
 		return models.ModeStandard

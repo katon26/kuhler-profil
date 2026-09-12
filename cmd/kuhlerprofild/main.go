@@ -240,19 +240,21 @@ func (d *Daemon) ReloadConfig() error {
 	d.logger.Printf("Applying reloaded config from %q: Mode=%s, BatteryLimit=%d%%, AutoCurve=%v, ActiveCurve=%s",
 		cfgPath, cfg.DefaultMode, cfg.DefaultBatteryLimit, cfg.AutoCurve, cfg.ActiveCurveProfile)
 
-	if err := d.eng.SetMode(cfg.DefaultMode); err != nil {
-		d.logger.Printf("[WARN] Failed to apply reloaded thermal mode: %v", err)
-	}
-	if err := d.eng.SetBatteryLimit(cfg.DefaultBatteryLimit); err != nil {
-		d.logger.Printf("[WARN] Failed to apply reloaded battery limit: %v", err)
-	}
 	if cfg.ActiveCurveProfile != "" {
 		if err := d.eng.SetCurveProfile(cfg.ActiveCurveProfile); err != nil {
 			d.logger.Printf("[WARN] Failed to apply reloaded curve profile: %v", err)
 		}
 	}
+	if err := d.eng.SetBatteryLimit(cfg.DefaultBatteryLimit); err != nil {
+		d.logger.Printf("[WARN] Failed to apply reloaded battery limit: %v", err)
+	}
 	if err := d.eng.SetAutoMode(cfg.AutoCurve); err != nil {
 		d.logger.Printf("[WARN] Failed to apply reloaded auto mode: %v", err)
+	}
+	if !cfg.AutoCurve {
+		if err := d.eng.SetMode(cfg.DefaultMode); err != nil {
+			d.logger.Printf("[WARN] Failed to apply reloaded thermal mode: %v", err)
+		}
 	}
 
 	return nil

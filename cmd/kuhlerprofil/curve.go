@@ -119,7 +119,13 @@ func newCurveCmd(opts Options) *cobra.Command {
 				if err := client.SetCurveProfile(targetProfile); err != nil {
 					return fmt.Errorf("failed to set curve profile to %q: %w", targetProfile, err)
 				}
-				fmt.Fprintf(opts.getOut(), "Curve profile set to %q\n", targetProfile)
+				_ = client.SetAutoMode(true)
+				telem, _ := client.GetStatus()
+				modeStr := ""
+				if telem.ActiveMode != "" {
+					modeStr = fmt.Sprintf(" -> %s mode", strings.Title(string(telem.ActiveMode)))
+				}
+				fmt.Fprintf(opts.getOut(), "✔ Curve profile set to %q (Auto Governor active%s)\n", targetProfile, modeStr)
 				return nil
 
 			default:
@@ -131,7 +137,13 @@ func newCurveCmd(opts Options) *cobra.Command {
 				if err := client.SetCurveProfile(targetProfile); err != nil {
 					return fmt.Errorf("failed to set curve profile to %q: %w", targetProfile, err)
 				}
-				fmt.Fprintf(opts.getOut(), "Curve profile set to %q\n", targetProfile)
+				_ = client.SetAutoMode(true)
+				telem, _ := client.GetStatus()
+				modeStr := ""
+				if telem.ActiveMode != "" {
+					modeStr = fmt.Sprintf(" -> %s mode", strings.Title(string(telem.ActiveMode)))
+				}
+				fmt.Fprintf(opts.getOut(), "✔ Curve profile set to %q (Auto Governor active%s)\n", targetProfile, modeStr)
 				return nil
 			}
 		},
