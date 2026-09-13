@@ -96,11 +96,14 @@ runTest('extension.js defines matching D-Bus interface and signatures', () => {
     assert(code.includes('name="GetActiveCurveProfile"'), 'Must define GetActiveCurveProfile method');
     assert(code.includes('name="SetCurveProfile"'), 'Must define SetCurveProfile method');
     assert(code.includes('name="GetHardwareFanCurves"'), 'Must define GetHardwareFanCurves method');
+    assert(code.includes('name="GetCooldownMode"'), 'Must define GetCooldownMode method');
+    assert(code.includes('name="SetCooldownMode"'), 'Must define SetCooldownMode method');
 
     // Verify Signals
     assert(code.includes('name="ThermalModeChanged"'), 'Must define ThermalModeChanged signal');
     assert(code.includes('name="BatteryLimitChanged"'), 'Must define BatteryLimitChanged signal');
     assert(code.includes('name="CurveProfileChanged"'), 'Must define CurveProfileChanged signal');
+    assert(code.includes('name="CooldownModeChanged"'), 'Must define CooldownModeChanged signal');
     assert(code.includes('name="TelemetryTick"'), 'Must define TelemetryTick signal');
 
     // Verify QuickSettings and Extension usage
@@ -146,6 +149,7 @@ function testParseTelemetry(raw) {
         autoMode: Boolean(data.auto_mode ?? false),
         activeCurve: String(data.active_curve_profile ?? data.active_curve ?? 'balanced').toLowerCase(),
         hasHardwareCurve: Boolean(data.has_hardware_curve ?? false),
+        cooldownMode: String(data.cooldown_mode ?? 'kick').toLowerCase(),
     };
 }
 
@@ -178,6 +182,7 @@ runTest('parseTelemetry properly formats live D-Bus telemetry payload', () => {
         auto_mode: false,
         active_curve_profile: 'aggressive',
         has_hardware_curve: true,
+        cooldown_mode: 'decay',
     };
 
     const parsed = testParseTelemetry(rawPayload);
@@ -191,6 +196,7 @@ runTest('parseTelemetry properly formats live D-Bus telemetry payload', () => {
     assert.equal(parsed.autoMode, false);
     assert.equal(parsed.activeCurve, 'aggressive');
     assert.equal(parsed.hasHardwareCurve, true);
+    assert.equal(parsed.cooldownMode, 'decay');
 });
 
 runTest('parseTelemetry handles null and partial payloads with safe defaults', () => {
@@ -208,6 +214,7 @@ runTest('parseTelemetry handles null and partial payloads with safe defaults', (
     assert.equal(partial.autoMode, false);
     assert.equal(partial.activeCurve, 'balanced');
     assert.equal(partial.hasHardwareCurve, false);
+    assert.equal(partial.cooldownMode, 'kick');
 });
 
 runTest('Thermal modes list, curve profiles, and battery limits cover ASUS specifications', () => {
@@ -225,6 +232,16 @@ runTest('Thermal modes list, curve profiles, and battery limits cover ASUS speci
     for (const limit of expectedLimits) {
         assert(code.includes(String(limit)), `extension.js must include battery limit ${limit}`);
     }
+});
+
+runTest('Cooldown modes list covers Zero-RPM specifications (kick, decay, off)', () => {
+    const expectedCooldowns = ['kick', 'decay', 'off'];
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    for (const cm of expectedCooldowns) {
+        assert(code.includes(`'${cm}'`), `extension.js must include cooldown mode '${cm}'`);
+    }
+    assert(code.includes('COOLDOWN_MODES'), 'extension.js must export COOLDOWN_MODES');
+    assert(code.includes('_buildCooldownSection'), 'extension.js must define _buildCooldownSection');
 });
 
 console.log(`\nAll ${passedTests}/${totalTests} extension tests passed successfully! ✨`);

@@ -50,6 +50,12 @@ export const KuhlerProfilInterfaceXML = `
     <method name="GetHardwareFanCurves">
       <arg name="status" type="a{sv}" direction="out"/>
     </method>
+    <method name="GetCooldownMode">
+      <arg name="mode" type="s" direction="out"/>
+    </method>
+    <method name="SetCooldownMode">
+      <arg name="mode" type="s" direction="in"/>
+    </method>
     <signal name="ThermalModeChanged">
       <arg name="mode" type="s"/>
     </signal>
@@ -58,6 +64,9 @@ export const KuhlerProfilInterfaceXML = `
     </signal>
     <signal name="CurveProfileChanged">
       <arg name="profile" type="s"/>
+    </signal>
+    <signal name="CooldownModeChanged">
+      <arg name="mode" type="s"/>
     </signal>
     <signal name="TelemetryTick">
       <arg name="status" type="a{sv}"/>
@@ -71,6 +80,12 @@ export const THERMAL_MODES = [
     { id: 'silent', name: _('Silent'), icon: 'power-profile-power-saver-symbolic', desc: _('Quiet') },
     { id: 'standard', name: _('Standard'), icon: 'power-profile-balanced-symbolic', desc: _('Balanced') },
     { id: 'boost', name: _('Boost'), icon: 'power-profile-performance-symbolic', desc: _('Max Cooling') },
+];
+
+export const COOLDOWN_MODES = [
+    { id: 'kick', name: _('Kick'), desc: _('Instant Reset') },
+    { id: 'decay', name: _('Decay'), desc: _('15s Smooth') },
+    { id: 'off', name: _('Off'), desc: _('Factory') },
 ];
 
 export const BATTERY_LIMITS = [60, 80, 100];
@@ -116,6 +131,7 @@ export function parseTelemetry(raw) {
         autoMode: Boolean(data.auto_mode ?? false),
         activeCurve: String(data.active_curve_profile ?? data.active_curve ?? 'balanced').toLowerCase(),
         hasHardwareCurve: Boolean(data.has_hardware_curve ?? false),
+        cooldownMode: String(data.cooldown_mode ?? 'kick').toLowerCase(),
     };
 }
 
@@ -284,6 +300,16 @@ export class KuhlerProfilDBusClient {
             });
             if (sigCurveId) this._signalIds.push(sigCurveId);
 
+            const sigCooldownId = this._proxy.connectSignal('CooldownModeChanged', (_proxy, _sender, [mode]) => {
+                if (this._lastTelemetry) {
+                    this._lastTelemetry.cooldownMode = String(mode).toLowerCase();
+                    this._notify(this._lastTelemetry);
+                } else {
+                    this.getStatus().catch(() => {});
+                }
+            });
+            if (sigCooldownId) this._signalIds.push(sigCooldownId);
+
             const sigTelemId = this._proxy.connectSignal('TelemetryTick', (_proxy, _sender, [status]) => {
                 const parsed = parseTelemetry(status);
                 if (parsed) {
@@ -334,6 +360,13 @@ export class KuhlerProfilDBusClient {
                 const profile = Array.isArray(unwrapped) ? unwrapped[0] : unwrapped;
                 if (this._lastTelemetry) {
                     this._lastTelemetry.activeCurve = String(profile).toLowerCase();
+                    this._connected = true;
+                    this._notify(this._lastTelemetry);
+                }
+            } else if (signalName === 'CooldownModeChanged') {
+                const mode = Array.isArray(unwrapped) ? unwrapped[0] : unwrapped;
+                if (this._lastTelemetry) {
+                    this._lastTelemetry.cooldownMode = String(mode).toLowerCase();
                     this._connected = true;
                     this._notify(this._lastTelemetry);
                 }
@@ -477,6 +510,40 @@ export class KuhlerProfilDBusClient {
             });
         });
     }
+
+    async getCooldownMode() {
+        if (!this._proxy) throw new Error('D-Bus proxy not initialized');
+
+        return new Promise((resolve, reject) => {
+            this._proxy.GetCooldownModeRemote((result, error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                const unwrapped = unwrapVariant(result);
+                const mode = Array.isArray(unwrapped) ? unwrapped[0] : unwrapped;
+                resolve(String(mode));
+            });
+        });
+    }
+
+    async setCooldownMode(mode) {
+        if (!this._proxy) throw new Error('D-Bus proxy not initialized');
+
+        return new Promise((resolve, reject) => {
+            this._proxy.SetCooldownModeRemote(String(mode), (_result, error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                if (this._lastTelemetry) {
+                    this._lastTelemetry.cooldownMode = String(mode).toLowerCase();
+                    this._notify(this._lastTelemetry);
+                }
+                resolve();
+            });
+        });
+    }
 }
 
 export const KoolThingDBusClient = KuhlerProfilDBusClient;
@@ -500,6 +567,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._modeButtons = new Map();
         this._batteryButtons = new Map();
         this._curveButtons = new Map();
+        this._cooldownButtons = new Map();
         this._unsubscribe = null;
 
         this._buildMenu();
@@ -542,6 +610,12 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         // Fan Curve Profile Section
         this._buildCurveProfileSection();
+
+        // Separator
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        // Zero-RPM Cooldown Mode Section
+        this._buildCooldownSection();
 
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -794,6 +868,60 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this.menu.addMenuItem(item);
     }
 
+    _buildCooldownSection() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+        });
+
+        const container = new St.BoxLayout({
+            vertical: true,
+            style_class: 'koolthing-section',
+            x_expand: true,
+        });
+
+        const headerBox = new St.BoxLayout({
+            vertical: false,
+            x_expand: true,
+        });
+
+        const title = new St.Label({
+            text: _('Zero-RPM Cooldown'),
+            style_class: 'koolthing-section-title',
+            x_expand: true,
+        });
+        headerBox.add_child(title);
+        container.add_child(headerBox);
+
+        const btnGroup = new St.BoxLayout({
+            vertical: false,
+            style_class: 'koolthing-button-group',
+            x_expand: true,
+        });
+
+        for (const cm of COOLDOWN_MODES) {
+            const btn = new St.Button({
+                label: cm.name,
+                style_class: 'koolthing-mode-button',
+                can_focus: true,
+                x_expand: true,
+            });
+
+            btn.connect('clicked', () => {
+                this._client.setCooldownMode(cm.id).catch(err => {
+                    console.error(`[KühlerProfil] Failed to set cooldown mode ${cm.id}: ${err}`);
+                });
+            });
+
+            this._cooldownButtons.set(cm.id, btn);
+            btnGroup.add_child(btn);
+        }
+
+        container.add_child(btnGroup);
+        item.add_child(container);
+        this.menu.addMenuItem(item);
+    }
+
     _buildAutoGovernorSection() {
         this._autoSwitch = new PopupMenu.PopupSwitchMenuItem(
             _('Dynamic Auto Governor'),
@@ -925,6 +1053,15 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             }
         }
 
+        // Update Cooldown Mode Button active styles
+        for (const [cooldownId, btn] of this._cooldownButtons.entries()) {
+            if (cooldownId === telemetry.cooldownMode) {
+                btn.add_style_class_name('koolthing-button-active');
+            } else {
+                btn.remove_style_class_name('koolthing-button-active');
+            }
+        }
+
         // Update Hardware Curve Badge
         if (this._hwCurveBadge) {
             this._hwCurveBadge.text = telemetry.hasHardwareCurve ? _('ASUS ACPI HW') : _('Software Governor');
@@ -951,6 +1088,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._modeButtons.clear();
         this._batteryButtons.clear();
         this._curveButtons.clear();
+        this._cooldownButtons.clear();
         super.destroy();
     }
 });
