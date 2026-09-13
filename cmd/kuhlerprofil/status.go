@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"kuhlerprofil/pkg/config"
 	"kuhlerprofil/pkg/models"
 )
 
@@ -63,6 +64,14 @@ func fetchTelemetry(opts Options) (models.Telemetry, error) {
 	drv := opts.getDriver()
 	telem, drvErr := drv.ReadTelemetry()
 	if drvErr == nil {
+		if cfg, cfgErr := config.Load(""); cfgErr == nil {
+			if telem.CooldownMode == "" {
+				telem.CooldownMode = cfg.CooldownMode
+			}
+			if telem.ActiveCurveProfile == "" {
+				telem.ActiveCurveProfile = cfg.ActiveCurveProfile
+			}
+		}
 		return telem, nil
 	}
 
@@ -78,9 +87,15 @@ func formatStatusHuman(opts Options, t models.Telemetry) {
 	}
 	modeFormatted := strings.ToUpper(modeStr[:1]) + modeStr[1:]
 
+	curveProfileStr := t.ActiveCurveProfile
+	if curveProfileStr == "" {
+		curveProfileStr = "balanced"
+	}
+	curveProfileFormatted := strings.ToUpper(curveProfileStr[:1]) + curveProfileStr[1:]
+
 	autoStr := "Disabled"
 	if t.AutoMode {
-		autoStr = "Enabled"
+		autoStr = fmt.Sprintf("Enabled (Profile: %s)", curveProfileFormatted)
 	}
 
 	powerStr := "Battery (Discharging)"
@@ -93,11 +108,20 @@ func formatStatusHuman(opts Options, t models.Telemetry) {
 		fan2Str = "0 RPM (Stopped / Idle)"
 	}
 
-	curveProfileStr := t.ActiveCurveProfile
-	if curveProfileStr == "" {
-		curveProfileStr = "balanced"
+	cooldownFormatted := "Kick (Instant Reset)"
+	switch t.CooldownMode {
+	case models.CooldownDecay:
+		cooldownFormatted = "Decay (Cooldown Decay)"
+	case models.CooldownOff:
+		cooldownFormatted = "Off (Factory Default)"
+	case models.CooldownKick:
+		cooldownFormatted = "Kick (Instant Reset)"
+	default:
+		if t.CooldownMode != "" {
+			cStr := string(t.CooldownMode)
+			cooldownFormatted = strings.ToUpper(cStr[:1]) + cStr[1:]
+		}
 	}
-	curveProfileFormatted := strings.ToUpper(curveProfileStr[:1]) + curveProfileStr[1:]
 
 	hwCurveStr := "No (Software Governor)"
 	if t.HasHardwareCurve {
@@ -107,7 +131,8 @@ func formatStatusHuman(opts Options, t models.Telemetry) {
 	fmt.Fprintln(out, "KühlerProfil System Status")
 	fmt.Fprintln(out, "──────────────────────────────────────────────────")
 	fmt.Fprintf(out, "  • Thermal Profile:   %s\n", modeFormatted)
-	fmt.Fprintf(out, "  • Auto Governor:     %s (Profile: %s)\n", autoStr, curveProfileFormatted)
+	fmt.Fprintf(out, "  • Cooldown Mode:     %s\n", cooldownFormatted)
+	fmt.Fprintf(out, "  • Auto Governor:     %s\n", autoStr)
 	fmt.Fprintf(out, "  • Hardware ACPI:     %s\n", hwCurveStr)
 	fmt.Fprintf(out, "  • CPU Temperature:   %.1f°C\n", t.CPUTemp)
 	fmt.Fprintf(out, "  • Fan 1 (CPU):       %d RPM\n", t.Fan1RPM)

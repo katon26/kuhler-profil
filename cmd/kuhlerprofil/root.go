@@ -103,6 +103,7 @@ func NewRootCmd(opts Options) *cobra.Command {
 	rootCmd.AddCommand(newBatteryCmd(opts))
 	rootCmd.AddCommand(newAutoCmd(opts))
 	rootCmd.AddCommand(newCurveCmd(opts))
+	rootCmd.AddCommand(newCooldownCmd(opts))
 	rootCmd.AddCommand(newTUICmd(opts))
 	rootCmd.AddCommand(newSetCmd(opts))
 
@@ -115,7 +116,7 @@ func newSetCmd(opts Options) *cobra.Command {
 		Short: "Convenience shortcut to set mode, curve profile, or battery limit",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("missing argument for set. Examples:\n  kp mode boost\n  kp curve set aggressive\n  kp battery 80")
+				return fmt.Errorf("missing argument for set. Examples:\n  kp mode boost\n  kp curve set aggressive\n  kp battery 80\n  kp cooldown kick")
 			}
 			target := strings.ToLower(strings.TrimSpace(args[0]))
 			if len(args) >= 2 {
@@ -130,6 +131,12 @@ func newSetCmd(opts Options) *cobra.Command {
 				case "battery":
 					batCmd := newBatteryCmd(opts)
 					return batCmd.RunE(cmd, []string{val})
+				case "cooldown", "cd":
+					cooldownCmd := newCooldownCmd(opts)
+					return cooldownCmd.RunE(cmd, []string{val})
+				case "auto":
+					autoCmd := newAutoCmd(opts)
+					return autoCmd.RunE(cmd, []string{val})
 				}
 			}
 
@@ -144,8 +151,11 @@ func newSetCmd(opts Options) *cobra.Command {
 			case "60", "80", "100":
 				batCmd := newBatteryCmd(opts)
 				return batCmd.RunE(cmd, []string{target})
+			case "kick", "decay":
+				cooldownCmd := newCooldownCmd(opts)
+				return cooldownCmd.RunE(cmd, []string{target})
 			default:
-				return fmt.Errorf("unknown target %q. Did you mean:\n  kp curve set %s\n  kp mode %s", target, target, target)
+				return fmt.Errorf("unknown target %q. Did you mean:\n  kp curve set %s\n  kp mode %s\n  kp cooldown %s", target, target, target, target)
 			}
 		},
 	}

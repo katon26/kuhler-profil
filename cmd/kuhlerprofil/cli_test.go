@@ -22,8 +22,9 @@ type mockCaller struct {
 	lastMode    string
 	lastLimit   int32
 	lastAuto    bool
-	lastCurve   string
-	returnError bool
+	lastCurve    string
+	lastCooldown string
+	returnError  bool
 }
 
 func (m *mockCaller) Call(method string, flags dbus.Flags, args ...interface{}) *dbus.Call {
@@ -53,6 +54,16 @@ func (m *mockCaller) Call(method string, flags dbus.Flags, args ...interface{}) 
 	case dbusapi.Interface + ".SetAutoMode":
 		if len(args) > 0 {
 			m.lastAuto = args[0].(bool)
+		}
+	case dbusapi.Interface + ".GetCooldownMode":
+		mode := m.lastCooldown
+		if mode == "" {
+			mode = "kick"
+		}
+		call.Body = []interface{}{mode}
+	case dbusapi.Interface + ".SetCooldownMode":
+		if len(args) > 0 {
+			m.lastCooldown = args[0].(string)
 		}
 	case dbusapi.Interface + ".GetCurveProfiles":
 		profiles := map[string]map[string]dbus.Variant{
@@ -156,6 +167,7 @@ func defaultMockTelemetryMap() map[string]interface{} {
 		"auto_mode":          false,
 		"active_curve":       "balanced",
 		"has_hardware_curve": false,
+		"cooldown_mode":      "kick",
 	}
 }
 
@@ -313,13 +325,39 @@ func TestStatusCmd_HumanReadable(t *testing.T) {
 		"2400 RPM",
 		"80%",
 		"Standard",
-		"Disabled",
+		"Cooldown Mode:     Kick (Instant Reset)",
+		"Auto Governor:     Disabled",
 	}
 
 	for _, sub := range expectedSubstrings {
 		if !strings.Contains(output, sub) {
 			t.Errorf("status output missing %q, got:\n%s", sub, output)
 		}
+	}
+
+	// Verify misleading text is NOT present when Auto Governor is disabled
+	if strings.Contains(output, "Disabled (Profile:") {
+		t.Errorf("status output contains misleading text 'Disabled (Profile: ...)', got:\n%s", output)
+	}
+}
+
+func TestStatusCmd_HumanReadable_AutoEnabled(t *testing.T) {
+	statusMap := defaultMockTelemetryMap()
+	statusMap["auto_mode"] = true
+	statusMap["active_curve"] = "quiet"
+	caller := &mockCaller{statusMap: statusMap}
+	opts, out, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"status"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("status command failed: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Auto Governor:     Enabled (Profile: Quiet)") {
+		t.Errorf("expected Auto Governor Enabled (Profile: Quiet), got:\n%s", output)
 	}
 }
 
@@ -883,4 +921,94 @@ func TestAutoCmd_WithProfileFlag(t *testing.T) {
 		t.Errorf("expected output to mention profile 'quiet', got: %s", out.String())
 	}
 }
+
+func TestCooldownCmd_GetStatus(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap(), lastCooldown: "kick"}
+	opts, out, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"cooldown"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cooldown command failed: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "kick") {
+		t.Errorf("expected cooldown status to contain 'kick', got: %s", output)
+	}
+}
+
+func TestCooldownCmd_SetModes(t *testing.T) {
+	modes := []struct {
+		input string
+		want  string
+	}{
+		{"kick", "kick"},
+		{"decay", "decay"},
+		{"off", "off"},
+	}
+
+	for _, m := range modes {
+		caller := &mockCaller{statusMap: defaultMockTelemetryMap()}
+		opts, out, _ := setupTestEnvironment(caller, nil)
+
+		cmd := NewRootCmd(opts)
+		cmd.SetArgs([]string{"cooldown", m.input})
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("cooldown %s failed: %v", m.input, err)
+		}
+
+		if caller.lastCooldown != m.want {
+			t.Errorf("expected caller.lastCooldown = %q, got %q", m.want, caller.lastCooldown)
+		}
+
+		if !strings.Contains(out.String(), m.want) {
+			t.Errorf("expected output to contain %q, got: %s", m.want, out.String())
+		}
+	}
+}
+
+func TestCooldownCmd_InvalidMode(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap()}
+	opts, _, _ := setupTestEnvironment(caller, nil)
+
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"cooldown", "hyper_super_mode"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("expected error for invalid cooldown mode, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid cooldown mode") {
+		t.Errorf("expected error message to mention invalid cooldown mode, got: %v", err)
+	}
+}
+
+func TestSetCmd_CooldownRouting(t *testing.T) {
+	caller := &mockCaller{statusMap: defaultMockTelemetryMap()}
+	opts, _, _ := setupTestEnvironment(caller, nil)
+
+	// Test kp set cooldown decay
+	cmd := NewRootCmd(opts)
+	cmd.SetArgs([]string{"set", "cooldown", "decay"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("set cooldown decay failed: %v", err)
+	}
+	if caller.lastCooldown != "decay" {
+		t.Errorf("expected lastCooldown to be 'decay', got %q", caller.lastCooldown)
+	}
+
+	// Test single arg shortcut: kp set kick
+	cmd = NewRootCmd(opts)
+	cmd.SetArgs([]string{"set", "kick"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("set kick failed: %v", err)
+	}
+	if caller.lastCooldown != "kick" {
+		t.Errorf("expected lastCooldown to be 'kick', got %q", caller.lastCooldown)
+	}
+}
+
 
