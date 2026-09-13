@@ -106,6 +106,64 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.AutoCurve != false {
 		t.Errorf("DefaultConfig().AutoCurve = %v, want false", cfg.AutoCurve)
 	}
+	if cfg.CooldownMode != models.CooldownKick {
+		t.Errorf("DefaultConfig().CooldownMode = %v, want %v", cfg.CooldownMode, models.CooldownKick)
+	}
+	if cfg.CooldownTempThreshold != 47.0 {
+		t.Errorf("DefaultConfig().CooldownTempThreshold = %f, want 47.0", cfg.CooldownTempThreshold)
+	}
+	if cfg.CooldownDecaySeconds != 15 {
+		t.Errorf("DefaultConfig().CooldownDecaySeconds = %d, want 15", cfg.CooldownDecaySeconds)
+	}
+}
+
+func TestCooldownModeParsingAndValidation(t *testing.T) {
+	tests := []struct {
+		input string
+		valid bool
+		mode  models.CooldownMode
+	}{
+		{"kick", true, models.CooldownKick},
+		{"instant", true, models.CooldownKick},
+		{"reset", true, models.CooldownKick},
+		{"decay", true, models.CooldownDecay},
+		{"passive", true, models.CooldownDecay},
+		{"smooth", true, models.CooldownDecay},
+		{"off", true, models.CooldownOff},
+		{"none", true, models.CooldownOff},
+		{"factory", true, models.CooldownOff},
+		{"disabled", true, models.CooldownOff},
+		{"KICK", true, models.CooldownKick},
+		{" DECAY ", true, models.CooldownDecay},
+		{"invalid", false, ""},
+		{"", false, ""},
+	}
+
+	for _, tt := range tests {
+		mode, err := models.ParseCooldownMode(tt.input)
+		if tt.valid && err != nil {
+			t.Errorf("expected valid for %q, got error: %v", tt.input, err)
+		}
+		if !tt.valid && err == nil {
+			t.Errorf("expected error for %q, got nil", tt.input)
+		}
+		if tt.valid && mode != tt.mode {
+			t.Errorf("expected %s, got %s", tt.mode, mode)
+		}
+	}
+
+	if err := models.ValidateCooldownMode(models.CooldownKick); err != nil {
+		t.Errorf("expected CooldownKick valid, got %v", err)
+	}
+	if err := models.ValidateCooldownMode(models.CooldownDecay); err != nil {
+		t.Errorf("expected CooldownDecay valid, got %v", err)
+	}
+	if err := models.ValidateCooldownMode(models.CooldownOff); err != nil {
+		t.Errorf("expected CooldownOff valid, got %v", err)
+	}
+	if err := models.ValidateCooldownMode(models.CooldownMode("invalid")); err == nil {
+		t.Errorf("expected error for invalid CooldownMode, got nil")
+	}
 }
 
 func TestTelemetryStruct(t *testing.T) {

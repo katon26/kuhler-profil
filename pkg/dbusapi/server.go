@@ -35,6 +35,8 @@ const (
 
 	// SignalCurveProfileChanged is emitted whenever active curve profile changes.
 	SignalCurveProfileChanged = "CurveProfileChanged"
+	// SignalCooldownModeChanged is emitted whenever zero-rpm cooldown mode changes.
+	SignalCooldownModeChanged = "CooldownModeChanged"
 
 	// SignalThermalModeChangedFull is the fully-qualified member for ThermalModeChanged.
 	SignalThermalModeChangedFull = Interface + "." + SignalThermalModeChanged
@@ -44,6 +46,8 @@ const (
 	SignalTelemetryTickFull = Interface + "." + SignalTelemetryTick
 	// SignalCurveProfileChangedFull is the fully-qualified member for CurveProfileChanged.
 	SignalCurveProfileChangedFull = Interface + "." + SignalCurveProfileChanged
+	// SignalCooldownModeChangedFull is the fully-qualified member for CooldownModeChanged.
+	SignalCooldownModeChangedFull = Interface + "." + SignalCooldownModeChanged
 )
 
 // IntrospectionXML provides formal D-Bus introspection definitions for tooling and language bindings.
@@ -75,6 +79,12 @@ const IntrospectionXML = `<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Objec
     <method name="GetHardwareFanCurves">
       <arg name="status" type="a{sv}" direction="out"/>
     </method>
+    <method name="GetCooldownMode">
+      <arg name="mode" type="s" direction="out"/>
+    </method>
+    <method name="SetCooldownMode">
+      <arg name="mode" type="s" direction="in"/>
+    </method>
     <signal name="ThermalModeChanged">
       <arg name="mode" type="s"/>
     </signal>
@@ -83,6 +93,9 @@ const IntrospectionXML = `<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Objec
     </signal>
     <signal name="CurveProfileChanged">
       <arg name="name" type="s"/>
+    </signal>
+    <signal name="CooldownModeChanged">
+      <arg name="mode" type="s"/>
     </signal>
     <signal name="TelemetryTick">
       <arg name="status" type="a{sv}"/>
@@ -101,6 +114,10 @@ func FormatStatusMap(status models.Telemetry) map[string]interface{} {
 	if activeCurve == "" {
 		activeCurve = "balanced"
 	}
+	cooldownMode := string(status.CooldownMode)
+	if cooldownMode == "" {
+		cooldownMode = "kick"
+	}
 	return map[string]interface{}{
 		"cpu_temp":              status.CPUTemp,
 		"fan1_rpm":              status.Fan1RPM,
@@ -113,6 +130,7 @@ func FormatStatusMap(status models.Telemetry) map[string]interface{} {
 		"active_curve_profile":  activeCurve,
 		"active_curve":          activeCurve,
 		"has_hardware_curve":    status.HasHardwareCurve,
+		"cooldown_mode":         cooldownMode,
 	}
 }
 
@@ -129,11 +147,12 @@ func FormatStatusVariantMap(status models.Telemetry) map[string]dbus.Variant {
 // ParseStatusMap reconstructs a Telemetry struct from a map with type coercion support.
 func ParseStatusMap(m map[string]interface{}) (models.Telemetry, error) {
 	if len(m) == 0 {
-		return models.Telemetry{ActiveMode: models.ModeStandard}, nil
+		return models.Telemetry{ActiveMode: models.ModeStandard, CooldownMode: models.CooldownKick}, nil
 	}
 
 	var telem models.Telemetry
 	telem.ActiveMode = models.ModeStandard
+	telem.CooldownMode = models.CooldownKick
 
 	for k, rawVal := range m {
 		// Unwrap dbus.Variant if present
@@ -178,13 +197,20 @@ func ParseStatusMap(m map[string]interface{}) (models.Telemetry, error) {
 			if b, ok := val.(bool); ok {
 				telem.AutoMode = b
 			}
-		case "active_curve_profile":
+		case "active_curve_profile", "active_curve":
 			if s, ok := val.(string); ok {
 				telem.ActiveCurveProfile = s
 			}
 		case "has_hardware_curve":
 			if b, ok := val.(bool); ok {
 				telem.HasHardwareCurve = b
+			}
+		case "cooldown_mode":
+			if s, ok := val.(string); ok && s != "" {
+				mode, err := models.ParseCooldownMode(s)
+				if err == nil {
+					telem.CooldownMode = mode
+				}
 			}
 		}
 	}
@@ -222,15 +248,16 @@ func toInt32(val interface{}) int32 {
 
 // DBusServer exposes the KühlerProfil engine to the Linux system bus via D-Bus IPC.
 type DBusServer struct {
-	mu         sync.Mutex
-	eng        *engine.Engine
-	conn       *dbus.Conn
-	cancel     context.CancelFunc
-	subChan    <-chan models.Telemetry
-	wg         sync.WaitGroup
-	lastMode   models.ThermalMode
-	lastLimit  int32
-	isExported bool
+	mu           sync.Mutex
+	eng          *engine.Engine
+	conn         *dbus.Conn
+	cancel       context.CancelFunc
+	subChan      <-chan models.Telemetry
+	wg           sync.WaitGroup
+	lastMode     models.ThermalMode
+	lastLimit    int32
+	lastCooldown models.CooldownMode
+	isExported   bool
 }
 
 // NewServer instantiates a DBusServer wrapping the provided Engine.
@@ -296,6 +323,7 @@ func (s *DBusServer) StartSignalBroadcaster(ctx context.Context, conn *dbus.Conn
 		initial := s.eng.GetTelemetry()
 		s.lastMode = initial.ActiveMode
 		s.lastLimit = initial.BatteryLimit
+		s.lastCooldown = initial.CooldownMode
 	}
 	s.mu.Unlock()
 
@@ -326,6 +354,7 @@ func (s *DBusServer) emitTelemetrySignals(telem models.Telemetry) {
 	conn := s.conn
 	lastMode := s.lastMode
 	lastLimit := s.lastLimit
+	lastCooldown := s.lastCooldown
 
 	modeChanged := telem.ActiveMode != lastMode
 	if modeChanged {
@@ -335,6 +364,11 @@ func (s *DBusServer) emitTelemetrySignals(telem models.Telemetry) {
 	limitChanged := telem.BatteryLimit != lastLimit
 	if limitChanged {
 		s.lastLimit = telem.BatteryLimit
+	}
+
+	cooldownChanged := telem.CooldownMode != lastCooldown && telem.CooldownMode != ""
+	if cooldownChanged {
+		s.lastCooldown = telem.CooldownMode
 	}
 	s.mu.Unlock()
 
@@ -354,6 +388,11 @@ func (s *DBusServer) emitTelemetrySignals(telem models.Telemetry) {
 	// 3. Emit BatteryLimitChanged if threshold changed
 	if limitChanged {
 		_ = conn.Emit(Path, SignalBatteryLimitChangedFull, telem.BatteryLimit)
+	}
+
+	// 4. Emit CooldownModeChanged if cooldown mode changed
+	if cooldownChanged {
+		_ = conn.Emit(Path, SignalCooldownModeChangedFull, string(telem.CooldownMode))
 	}
 }
 
@@ -526,4 +565,46 @@ func (s *DBusServer) GetHardwareFanCurves() (map[string]dbus.Variant, *dbus.Erro
 	}
 	return res, nil
 }
+
+// GetCooldownMode returns the currently configured zero-rpm cooldown mode.
+func (s *DBusServer) GetCooldownMode() (string, *dbus.Error) {
+	s.mu.Lock()
+	eng := s.eng
+	s.mu.Unlock()
+
+	if eng == nil {
+		return "", dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
+	}
+
+	return string(eng.GetCooldownMode()), nil
+}
+
+// SetCooldownMode configures the zero-rpm cooldown mode.
+func (s *DBusServer) SetCooldownMode(mode string) *dbus.Error {
+	m, err := models.ParseCooldownMode(mode)
+	if err != nil {
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.InvalidMode", []interface{}{err.Error()})
+	}
+
+	s.mu.Lock()
+	eng := s.eng
+	conn := s.conn
+	s.lastCooldown = m
+	s.mu.Unlock()
+
+	if eng == nil {
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.Unavailable", []interface{}{"engine not ready"})
+	}
+
+	if err := eng.SetCooldownMode(m); err != nil {
+		return dbus.NewError("org.freedesktop.kuhlerprofil.Error.HardwareFailure", []interface{}{err.Error()})
+	}
+
+	if conn != nil {
+		_ = conn.Emit(Path, SignalCooldownModeChangedFull, string(m))
+	}
+
+	return nil
+}
+
 

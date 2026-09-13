@@ -24,19 +24,40 @@ const (
 // It supervises hardware drivers, applies thermal mode hysteresis, enforces battery limits,
 // and broadcasts real-time telemetry to connected consumers (D-Bus, CLI, TUI).
 type Engine struct {
-	mu             sync.RWMutex
-	driver         driver.HardwareDriver
-	cfg            models.Config
-	configPath     string
-	telemetry      models.Telemetry
-	autoMode       bool
-	subscribers    map[chan models.Telemetry]struct{}
-	subMu          sync.Mutex
-	pendingTarget  models.ThermalMode
-	pendingSince   time.Time
-	lastModeChange time.Time
-	dwellDuration  time.Duration
+	mu                   sync.RWMutex
+	driver               driver.HardwareDriver
+	cfg                  models.Config
+	configPath           string
+	telemetry            models.Telemetry
+	autoMode             bool
+	subscribers          map[chan models.Telemetry]struct{}
+	subMu                sync.Mutex
+	pendingTarget        models.ThermalMode
+	pendingSince         time.Time
+	lastModeChange       time.Time
+	dwellDuration        time.Duration
+	cooldownMode         models.CooldownMode
+	cooldownThreshold    float64
+	cooldownDecaySeconds int
+	lastKickTime         time.Time
+	coolIdleSince        time.Time
+	kickDebounce         time.Duration
+	cooldownKicks        int
 }
+
+const (
+	// MaxSafeCooldownTemp is the absolute thermal ceiling for Zero-RPM cooldown assistance.
+	// Cooldown pulses are strictly prohibited on warm/hot hardware (> 50°C) to protect system thermals.
+	MaxSafeCooldownTemp = 50.0
+
+	// MinSafeCooldownTemp is the minimum plausible CPU temperature sensor reading.
+	// Readouts below 15°C indicate disconnected, failed, or uninitialized hwmon sensors.
+	MinSafeCooldownTemp = 15.0
+
+	// MaxConsecutiveCooldownKicks limits how many times the kernel sysfs interface will be pulsed
+	// for a single cooldown event, preventing endless ACPI method execution when firmware floors apply.
+	MaxConsecutiveCooldownKicks = 2
+)
 
 // NewEngine instantiates a new Engine with hardware driver and initial configuration.
 func NewEngine(drv driver.HardwareDriver, cfg models.Config, configPath string) *Engine {
@@ -51,6 +72,15 @@ func NewEngine(drv driver.HardwareDriver, cfg models.Config, configPath string) 
 	}
 	if cfg.ActiveCurveProfile == "" {
 		cfg.ActiveCurveProfile = "balanced"
+	}
+	if cfg.CooldownMode == "" {
+		cfg.CooldownMode = models.CooldownKick
+	}
+	if cfg.CooldownTempThreshold <= 0 || cfg.CooldownTempThreshold > MaxSafeCooldownTemp {
+		cfg.CooldownTempThreshold = 47.0
+	}
+	if cfg.CooldownDecaySeconds <= 0 || cfg.CooldownDecaySeconds > 300 {
+		cfg.CooldownDecaySeconds = 15
 	}
 	if len(cfg.Curves) == 0 {
 		cfg.Curves = models.DefaultCurveProfiles()
@@ -69,18 +99,23 @@ func NewEngine(drv driver.HardwareDriver, cfg models.Config, configPath string) 
 	}
 
 	eng := &Engine{
-		driver:        drv,
-		cfg:           cfg,
-		configPath:    configPath,
-		autoMode:      cfg.AutoCurve,
-		dwellDuration: dwell,
-		subscribers:   make(map[chan models.Telemetry]struct{}),
+		driver:               drv,
+		cfg:                  cfg,
+		configPath:           configPath,
+		autoMode:             cfg.AutoCurve,
+		dwellDuration:        dwell,
+		cooldownMode:         cfg.CooldownMode,
+		cooldownThreshold:    cfg.CooldownTempThreshold,
+		cooldownDecaySeconds: cfg.CooldownDecaySeconds,
+		kickDebounce:         10 * time.Second,
+		subscribers:          make(map[chan models.Telemetry]struct{}),
 		telemetry: models.Telemetry{
 			ActiveMode:         cfg.DefaultMode,
 			BatteryLimit:       cfg.DefaultBatteryLimit,
 			AutoMode:           cfg.AutoCurve,
 			ActiveCurveProfile: cfg.ActiveCurveProfile,
 			HasHardwareCurve:   drv.GetHardwareCurveCaps().Supported,
+			CooldownMode:       cfg.CooldownMode,
 		},
 	}
 
@@ -220,11 +255,115 @@ func (e *Engine) pollAndGovern() {
 	}
 
 	e.telemetry.AutoMode = e.autoMode
+
+	// Cooldown assistance evaluation (evaluates both CPU fan and GPU fan for dual-fan laptops)
+	effectiveFanRPM := e.telemetry.Fan1RPM
+	if e.telemetry.Fan2RPM > effectiveFanRPM {
+		effectiveFanRPM = e.telemetry.Fan2RPM
+	}
+	e.evaluateCooldownLocked(e.telemetry.CPUTemp, effectiveFanRPM)
+	e.telemetry.CooldownMode = e.cooldownMode
+
 	telemSnapshot = e.telemetry
 	e.mu.Unlock()
 
 	// Broadcast telemetry to subscribers
 	e.broadcastTelemetry(telemSnapshot)
+}
+
+// evaluateCooldownLocked evaluates whether zero-rpm cooldown pulse or decay dwell should trigger.
+// Precondition: e.mu must be held.
+func (e *Engine) evaluateCooldownLocked(temp float64, fanRpm int32) {
+	threshold := e.cooldownThreshold
+	if threshold <= 0 {
+		threshold = 47.0
+	}
+	if threshold > MaxSafeCooldownTemp {
+		threshold = MaxSafeCooldownTemp
+	}
+
+	debounce := e.kickDebounce
+	if debounce <= 0 {
+		debounce = 10 * time.Second
+	}
+
+	// Safety Guard 1: Ignore invalid/disconnected sensor readings (< 15°C) or hot hardware (> MaxSafeCooldownTemp)
+	if temp < MinSafeCooldownTemp || temp > MaxSafeCooldownTemp {
+		if temp > threshold+1.0 {
+			e.cooldownKicks = 0
+			e.coolIdleSince = time.Time{}
+		}
+		return
+	}
+
+	// Safety Guard 2: Reset cooldown state when fans have stopped (Zero-RPM achieved)
+	if fanRpm <= 0 {
+		e.cooldownKicks = 0
+		e.coolIdleSince = time.Time{}
+		return
+	}
+
+	// Deadband: If temp is between threshold and threshold+1.0, preserve decay dwell; if higher, reset.
+	if temp > threshold {
+		if temp > threshold+1.0 {
+			e.cooldownKicks = 0
+			e.coolIdleSince = time.Time{}
+		}
+		return
+	}
+
+	// Safety Guard 3: Do not pulse if an Auto Governor mode down-step is currently pending
+	if e.autoMode && e.pendingTarget != "" {
+		return
+	}
+
+	now := time.Now()
+
+	// Safety Guard 4: Avoid redundant pulsing if a mode switch just occurred within the debounce window
+	if !e.lastModeChange.IsZero() && now.Sub(e.lastModeChange) < debounce {
+		return
+	}
+
+	modeToSet := e.telemetry.ActiveMode
+	if modeToSet == "" {
+		modeToSet = e.cfg.DefaultMode
+		if modeToSet == "" {
+			modeToSet = models.ModeStandard
+		}
+	}
+
+	switch e.cooldownMode {
+	case models.CooldownKick:
+		if e.cooldownKicks >= MaxConsecutiveCooldownKicks {
+			return
+		}
+		if e.lastKickTime.IsZero() || now.Sub(e.lastKickTime) >= debounce {
+			_ = e.driver.SetThermalMode(modeToSet)
+			e.lastKickTime = now
+			e.cooldownKicks++
+		}
+
+	case models.CooldownDecay:
+		if e.cooldownKicks >= 1 {
+			return
+		}
+		decaySec := e.cooldownDecaySeconds
+		if decaySec <= 0 {
+			decaySec = 15
+		}
+		if e.coolIdleSince.IsZero() {
+			e.coolIdleSince = now
+		} else if now.Sub(e.coolIdleSince) >= time.Duration(decaySec)*time.Second {
+			_ = e.driver.SetThermalMode(modeToSet)
+			e.coolIdleSince = time.Time{}
+			e.lastKickTime = now
+			e.cooldownKicks++
+		}
+
+	case models.CooldownOff:
+		e.coolIdleSince = time.Time{}
+		e.cooldownKicks = 0
+	}
 }
 
 // broadcastTelemetry dispatches a telemetry snapshot to all active subscriber channels non-blockingly.
@@ -267,6 +406,8 @@ func (e *Engine) SetMode(mode models.ThermalMode) error {
 	e.cfg.DefaultMode = mode
 	e.pendingTarget = ""
 	e.lastModeChange = time.Now()
+	e.cooldownKicks = 0
+	e.coolIdleSince = time.Time{}
 	snapshot := e.telemetry
 	cfgCopy := e.cfg
 	configPath := e.configPath
@@ -314,6 +455,8 @@ func (e *Engine) SetAutoMode(enabled bool) error {
 	e.telemetry.AutoMode = enabled
 	e.cfg.AutoCurve = enabled
 	e.pendingTarget = ""
+	e.cooldownKicks = 0
+	e.coolIdleSince = time.Time{}
 
 	// If hardware ACPI custom fan curve is supported, enable or disable hardware curve on all fans
 	if caps := e.driver.GetHardwareCurveCaps(); caps.Supported {
@@ -368,6 +511,86 @@ func (e *Engine) SetDwellDuration(d time.Duration) {
 	defer e.mu.Unlock()
 	e.dwellDuration = d
 }
+
+// GetCooldownMode returns the currently configured cooldown mode.
+func (e *Engine) GetCooldownMode() models.CooldownMode {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if e.cooldownMode == "" {
+		return models.CooldownKick
+	}
+	return e.cooldownMode
+}
+
+// SetCooldownMode configures the active zero-rpm cooldown behavior and updates persistent configuration.
+func (e *Engine) SetCooldownMode(mode models.CooldownMode) error {
+	if err := models.ValidateCooldownMode(mode); err != nil {
+		return err
+	}
+
+	e.mu.Lock()
+	e.cooldownMode = mode
+	e.cfg.CooldownMode = mode
+	e.telemetry.CooldownMode = mode
+	e.coolIdleSince = time.Time{}
+	e.cooldownKicks = 0
+	e.lastKickTime = time.Time{}
+	snapshot := e.telemetry
+	cfgCopy := e.cfg
+	configPath := e.configPath
+	e.mu.Unlock()
+
+	if configPath != "" {
+		_ = config.Save(configPath, cfgCopy)
+	}
+
+	e.broadcastTelemetry(snapshot)
+	return nil
+}
+
+// SetKickDebounce overrides the minimum duration between cooldown kicks.
+func (e *Engine) SetKickDebounce(d time.Duration) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.kickDebounce = d
+}
+
+// SetCooldownDecaySeconds overrides the cooldown decay dwell seconds.
+func (e *Engine) SetCooldownDecaySeconds(sec int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if sec <= 0 || sec > 300 {
+		sec = 15
+	}
+	e.cooldownDecaySeconds = sec
+	e.cfg.CooldownDecaySeconds = sec
+	e.coolIdleSince = time.Time{}
+	e.cooldownKicks = 0
+}
+
+// SetCooldownThreshold overrides the temperature threshold below which cooldown assistance is eligible.
+func (e *Engine) SetCooldownThreshold(thresh float64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if thresh <= 0 || thresh > MaxSafeCooldownTemp {
+		thresh = 47.0
+	}
+	e.cooldownThreshold = thresh
+	e.cfg.CooldownTempThreshold = thresh
+	e.coolIdleSince = time.Time{}
+	e.cooldownKicks = 0
+}
+
+// GetCooldownThreshold returns the active cooldown temperature threshold.
+func (e *Engine) GetCooldownThreshold() float64 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if e.cooldownThreshold <= 0 {
+		return 47.0
+	}
+	return e.cooldownThreshold
+}
+
 
 // GetActiveCurveProfile returns the active curve profile name.
 func (e *Engine) GetActiveCurveProfile() string {

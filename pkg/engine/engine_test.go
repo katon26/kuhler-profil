@@ -503,4 +503,262 @@ func TestEngineCurveHysteresisAndDwell(t *testing.T) {
 	}
 }
 
+type spyDriver struct {
+	driver.HardwareDriver
+	mu                  sync.Mutex
+	setThermalModeCalls []models.ThermalMode
+}
+
+func (s *spyDriver) SetThermalMode(mode models.ThermalMode) error {
+	s.mu.Lock()
+	s.setThermalModeCalls = append(s.setThermalModeCalls, mode)
+	s.mu.Unlock()
+	return s.HardwareDriver.SetThermalMode(mode)
+}
+
+func (s *spyDriver) getCallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.setThermalModeCalls)
+}
+
+func TestEngineCooldownState(t *testing.T) {
+	_, d := setupMockHardware()
+	cfg := models.DefaultConfig()
+	eng := engine.NewEngine(d, cfg, "")
+
+	if eng.GetCooldownMode() != models.CooldownKick {
+		t.Errorf("expected default cooldown mode kick, got %s", eng.GetCooldownMode())
+	}
+	if eng.GetTelemetry().CooldownMode != models.CooldownKick {
+		t.Errorf("expected telemetry cooldown mode kick, got %s", eng.GetTelemetry().CooldownMode)
+	}
+
+	if err := eng.SetCooldownMode(models.CooldownDecay); err != nil {
+		t.Fatalf("unexpected error setting decay mode: %v", err)
+	}
+	if eng.GetCooldownMode() != models.CooldownDecay {
+		t.Errorf("expected cooldown mode decay, got %s", eng.GetCooldownMode())
+	}
+	if eng.GetTelemetry().CooldownMode != models.CooldownDecay {
+		t.Errorf("expected telemetry cooldown mode decay, got %s", eng.GetTelemetry().CooldownMode)
+	}
+
+	if err := eng.SetCooldownMode(models.CooldownOff); err != nil {
+		t.Fatalf("unexpected error setting off mode: %v", err)
+	}
+	if eng.GetCooldownMode() != models.CooldownOff {
+		t.Errorf("expected cooldown mode off, got %s", eng.GetCooldownMode())
+	}
+
+	// Invalid mode error
+	if err := eng.SetCooldownMode(models.CooldownMode("invalid")); err == nil {
+		t.Errorf("expected error setting invalid cooldown mode, got nil")
+	}
+}
+
+func TestEngineCooldownEvaluation_Kick(t *testing.T) {
+	mockFS, d := setupMockHardware()
+	spy := &spyDriver{HardwareDriver: d}
+	cfg := models.DefaultConfig()
+	cfg.PollIntervalMs = 25
+	cfg.CooldownMode = models.CooldownKick
+	cfg.CooldownTempThreshold = 47.0
+
+	// Set initial hardware state: temp 55°C (hot), fan 2000 RPM
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("55000\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("2000\n"))
+
+	eng := engine.NewEngine(spy, cfg, "")
+	eng.SetKickDebounce(150 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go eng.Start(ctx)
+
+	// Poll runs while temp is 55°C (> 47°C): no cooldown kick should occur
+	time.Sleep(70 * time.Millisecond)
+	if count := spy.getCallCount(); count != 0 {
+		t.Errorf("expected 0 kick calls at 55°C, got %d", count)
+	}
+
+	// Now CPU cools down to 45°C (<= 47°C) with fan spinning (2000 RPM)
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("45000\n"))
+	time.Sleep(50 * time.Millisecond)
+
+	// Kick should have triggered exactly once
+	if count := spy.getCallCount(); count != 1 {
+		t.Fatalf("expected 1 kick call when temp drops to 45°C, got %d", count)
+	}
+
+	// Debounce check: within the 150ms debounce window (~50ms elapsed), no additional kicks
+	time.Sleep(50 * time.Millisecond)
+	if count := spy.getCallCount(); count != 1 {
+		t.Errorf("expected debounce to suppress kicks, got count %d", count)
+	}
+
+	// After debounce expires (> 150ms total), another kick occurs if still spinning and cool (retry attempt)
+	time.Sleep(120 * time.Millisecond)
+	if count := spy.getCallCount(); count < 2 {
+		t.Errorf("expected at least 2 kicks after debounce expiry, got %d", count)
+	}
+
+	// Anti-spam guard: waiting another debounce cycle does NOT cause infinite kicks (capped at MaxConsecutiveCooldownKicks = 2)
+	time.Sleep(160 * time.Millisecond)
+	if count := spy.getCallCount(); count > 2 {
+		t.Errorf("expected anti-spam cap at 2 kicks while spinning cool, got %d", count)
+	}
+
+	// When fan stops (0 RPM), no further kicks occur and cooldown state resets
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("0\n"))
+	time.Sleep(70 * time.Millisecond)
+	countAfterFanStop := spy.getCallCount()
+	time.Sleep(70 * time.Millisecond)
+	if spy.getCallCount() != countAfterFanStop {
+		t.Errorf("expected no kicks when fan is 0 RPM, count increased from %d to %d", countAfterFanStop, spy.getCallCount())
+	}
+
+	// Now simulate a new workload: temp rises to 55°C (> 48°C deadband) and fan spins up to 2000 RPM
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("55000\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("2000\n"))
+	time.Sleep(70 * time.Millisecond)
+
+	// Workload finishes and temp cools down to 45°C: kick should re-arm and fire again
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("45000\n"))
+	time.Sleep(60 * time.Millisecond)
+	if count := spy.getCallCount(); count != countAfterFanStop+1 {
+		t.Errorf("expected kick to re-arm on new cooldown cycle after thermal spike, got count %d, want %d", count, countAfterFanStop+1)
+	}
+}
+
+func TestEngineCooldownEvaluation_DecayAndOff(t *testing.T) {
+	mockFS, d := setupMockHardware()
+	spy := &spyDriver{HardwareDriver: d}
+	cfg := models.DefaultConfig()
+	cfg.PollIntervalMs = 25
+	cfg.CooldownMode = models.CooldownDecay
+	cfg.CooldownTempThreshold = 47.0
+	cfg.CooldownDecaySeconds = 1 // 1s decay
+
+	// Temp cool (44°C), fan spinning (1800 RPM)
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("44000\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("1800\n"))
+
+	eng := engine.NewEngine(spy, cfg, "")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go eng.Start(ctx)
+
+	// Immediately (< 1s), decay mode should NOT kick
+	time.Sleep(100 * time.Millisecond)
+	if count := spy.getCallCount(); count != 0 {
+		t.Fatalf("expected 0 calls during initial decay observation, got %d", count)
+	}
+
+	// Wait for decay duration (1s) to expire
+	time.Sleep(1100 * time.Millisecond)
+	if count := spy.getCallCount(); count != 1 {
+		t.Fatalf("expected 1 call after decay period, got %d", count)
+	}
+
+	// Switch to Off mode: no calls should ever occur
+	if err := eng.SetCooldownMode(models.CooldownOff); err != nil {
+		t.Fatalf("SetCooldownMode off failed: %v", err)
+	}
+	curCount := spy.getCallCount()
+	time.Sleep(200 * time.Millisecond)
+	if spy.getCallCount() != curCount {
+		t.Errorf("expected no calls in off mode, got %d (was %d)", spy.getCallCount(), curCount)
+	}
+}
+
+func TestEngineCooldownEvaluation_InvalidTempSensors(t *testing.T) {
+	mockFS, d := setupMockHardware()
+	spy := &spyDriver{HardwareDriver: d}
+	cfg := models.DefaultConfig()
+	cfg.PollIntervalMs = 25
+	cfg.CooldownMode = models.CooldownKick
+	cfg.CooldownTempThreshold = 47.0
+
+	// Sensor glitch / disconnected reading: 0°C with spinning fan (2200 RPM)
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("0\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("2200\n"))
+
+	eng := engine.NewEngine(spy, cfg, "")
+	eng.SetKickDebounce(150 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go eng.Start(ctx)
+
+	// 0°C is below MinSafeCooldownTemp (15°C): must NEVER kick
+	time.Sleep(80 * time.Millisecond)
+	if count := spy.getCallCount(); count != 0 {
+		t.Errorf("expected 0 kicks for 0°C sensor glitch, got %d", count)
+	}
+
+	// Hot hardware (52°C) exceeding MaxSafeCooldownTemp (50°C): must NEVER kick
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("52000\n"))
+	time.Sleep(80 * time.Millisecond)
+	if count := spy.getCallCount(); count != 0 {
+		t.Errorf("expected 0 kicks for 52°C hot hardware, got %d", count)
+	}
+}
+
+func TestEngineCooldownEvaluation_DualFan(t *testing.T) {
+	mockFS, d := setupMockHardware()
+	spy := &spyDriver{HardwareDriver: d}
+	cfg := models.DefaultConfig()
+	cfg.PollIntervalMs = 25
+	cfg.CooldownMode = models.CooldownKick
+	cfg.CooldownTempThreshold = 47.0
+
+	// Dual fan laptop: Fan 1 is 0 RPM (stopped), but Fan 2 (GPU) is 2400 RPM (spinning), temp cool 44°C
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("44000\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("0\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan2_input", []byte("2400\n"))
+
+	eng := engine.NewEngine(spy, cfg, "")
+	eng.SetKickDebounce(150 * time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go eng.Start(ctx)
+
+	// Since Fan 2 is spinning and CPU is cool, cooldown kick should fire
+	time.Sleep(60 * time.Millisecond)
+	if count := spy.getCallCount(); count != 1 {
+		t.Errorf("expected 1 kick when Fan 2 is spinning on dual-fan laptop, got %d", count)
+	}
+}
+
+func TestEngineCooldownThresholdGetSet(t *testing.T) {
+	_, d := setupMockHardware()
+	cfg := models.DefaultConfig()
+	eng := engine.NewEngine(d, cfg, "")
+
+	if thresh := eng.GetCooldownThreshold(); thresh != 47.0 {
+		t.Errorf("expected default threshold 47.0, got %f", thresh)
+	}
+
+	eng.SetCooldownThreshold(45.0)
+	if thresh := eng.GetCooldownThreshold(); thresh != 45.0 {
+		t.Errorf("expected threshold 45.0, got %f", thresh)
+	}
+
+	// Setting dangerously high threshold clamped to MaxSafeCooldownTemp (50.0) -> resets to 47.0 default
+	eng.SetCooldownThreshold(80.0)
+	if thresh := eng.GetCooldownThreshold(); thresh != 47.0 {
+		t.Errorf("expected dangerously high threshold to clamp to 47.0, got %f", thresh)
+	}
+
+	// Setting zero/negative resets to 47.0
+	eng.SetCooldownThreshold(-5.0)
+	if thresh := eng.GetCooldownThreshold(); thresh != 47.0 {
+		t.Errorf("expected negative threshold to clamp to 47.0, got %f", thresh)
+	}
+}
+
+
 

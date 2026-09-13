@@ -124,6 +124,15 @@ func Load(path string) (models.Config, error) {
 	if len(cfg.Curves) == 0 {
 		cfg.Curves = models.DefaultCurveProfiles()
 	}
+	if cfg.CooldownMode == "" {
+		cfg.CooldownMode = models.CooldownKick
+	}
+	if cfg.CooldownTempThreshold <= 0 || cfg.CooldownTempThreshold > 50.0 {
+		cfg.CooldownTempThreshold = 47.0
+	}
+	if cfg.CooldownDecaySeconds <= 0 || cfg.CooldownDecaySeconds > 300 {
+		cfg.CooldownDecaySeconds = 15
+	}
 
 	return cfg, nil
 }

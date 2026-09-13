@@ -216,6 +216,41 @@ func (c *DBusClient) GetHardwareFanCurves() (map[string]dbus.Variant, error) {
 	return nil, fmt.Errorf("unexpected response type %T from GetHardwareFanCurves", call.Body[0])
 }
 
+// GetCooldownMode queries the active zero-rpm cooldown mode over D-Bus.
+func (c *DBusClient) GetCooldownMode() (string, error) {
+	if c.caller == nil {
+		return "", fmt.Errorf("dbus client is not connected")
+	}
+
+	call := c.caller.Call(Interface+".GetCooldownMode", 0)
+	if call.Err != nil {
+		return "", fmt.Errorf("failed to get cooldown mode over D-Bus: %w", call.Err)
+	}
+
+	if len(call.Body) == 0 {
+		return "", fmt.Errorf("empty response from GetCooldownMode")
+	}
+
+	if mode, ok := call.Body[0].(string); ok {
+		return mode, nil
+	}
+	return "", fmt.Errorf("unexpected response type %T from GetCooldownMode", call.Body[0])
+}
+
+// SetCooldownMode updates the zero-rpm cooldown mode over D-Bus.
+func (c *DBusClient) SetCooldownMode(mode string) error {
+	if c.caller == nil {
+		return fmt.Errorf("dbus client is not connected")
+	}
+
+	call := c.caller.Call(Interface+".SetCooldownMode", 0, mode)
+	if call.Err != nil {
+		return fmt.Errorf("failed to set cooldown mode over D-Bus: %w", call.Err)
+	}
+	return nil
+}
+
+
 // SubscribeSignals registers D-Bus match rules and streams telemetry snapshots and mode changes.
 func (c *DBusClient) SubscribeSignals(ctx context.Context) (<-chan models.Telemetry, func(), error) {
 	if c.conn == nil {

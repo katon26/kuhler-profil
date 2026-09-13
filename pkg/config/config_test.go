@@ -127,6 +127,15 @@ func TestLoad_EmptyFieldsNormalized(t *testing.T) {
 	if cfg.PollIntervalMs != 1500 {
 		t.Errorf("PollIntervalMs = %d, want 1500", cfg.PollIntervalMs)
 	}
+	if cfg.CooldownMode != models.CooldownKick {
+		t.Errorf("CooldownMode = %v, want %v", cfg.CooldownMode, models.CooldownKick)
+	}
+	if cfg.CooldownTempThreshold != 47.0 {
+		t.Errorf("CooldownTempThreshold = %f, want 47.0", cfg.CooldownTempThreshold)
+	}
+	if cfg.CooldownDecaySeconds != 15 {
+		t.Errorf("CooldownDecaySeconds = %d, want 15", cfg.CooldownDecaySeconds)
+	}
 }
 
 func TestDiscoverConfigPath(t *testing.T) {
@@ -269,5 +278,37 @@ auto_curve = false
 		t.Errorf("cfg.Curves was empty, expected default curve profiles to be populated")
 	}
 }
+
+func TestLoadConfigClampsDangerousCooldownValues(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "kuhlerprofil-cooldown-safety-*.toml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Malformed / dangerous values: temp threshold 85°C (dangerous), decay seconds 999
+	content := `cooldown_mode = "kick"
+cooldown_temp_threshold = 85.0
+cooldown_decay_seconds = 999
+`
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	cfg, err := config.Load(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("config.Load error: %v", err)
+	}
+
+	// Must be clamped to safe default 47.0°C and 15s
+	if cfg.CooldownTempThreshold != 47.0 {
+		t.Errorf("expected dangerous 85°C threshold clamped to 47.0, got %f", cfg.CooldownTempThreshold)
+	}
+	if cfg.CooldownDecaySeconds != 15 {
+		t.Errorf("expected out-of-bounds 999 decay clamped to 15, got %d", cfg.CooldownDecaySeconds)
+	}
+}
+
 
 

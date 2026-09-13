@@ -237,8 +237,8 @@ func (d *Daemon) ReloadConfig() error {
 		return fmt.Errorf("failed to reload config from %q: %w", cfgPath, err)
 	}
 
-	d.logger.Printf("Applying reloaded config from %q: Mode=%s, BatteryLimit=%d%%, AutoCurve=%v, ActiveCurve=%s",
-		cfgPath, cfg.DefaultMode, cfg.DefaultBatteryLimit, cfg.AutoCurve, cfg.ActiveCurveProfile)
+	d.logger.Printf("Applying reloaded config from %q: Mode=%s, BatteryLimit=%d%%, AutoCurve=%v, ActiveCurve=%s, CooldownMode=%s",
+		cfgPath, cfg.DefaultMode, cfg.DefaultBatteryLimit, cfg.AutoCurve, cfg.ActiveCurveProfile, cfg.CooldownMode)
 
 	if cfg.ActiveCurveProfile != "" {
 		if err := d.eng.SetCurveProfile(cfg.ActiveCurveProfile); err != nil {
@@ -255,6 +255,17 @@ func (d *Daemon) ReloadConfig() error {
 		if err := d.eng.SetMode(cfg.DefaultMode); err != nil {
 			d.logger.Printf("[WARN] Failed to apply reloaded thermal mode: %v", err)
 		}
+	}
+	if cfg.CooldownMode != "" {
+		if err := d.eng.SetCooldownMode(cfg.CooldownMode); err != nil {
+			d.logger.Printf("[WARN] Failed to apply reloaded cooldown mode: %v", err)
+		}
+	}
+	if cfg.CooldownTempThreshold > 0 {
+		d.eng.SetCooldownThreshold(cfg.CooldownTempThreshold)
+	}
+	if cfg.CooldownDecaySeconds > 0 {
+		d.eng.SetCooldownDecaySeconds(cfg.CooldownDecaySeconds)
 	}
 
 	return nil

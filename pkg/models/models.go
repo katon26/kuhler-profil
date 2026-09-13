@@ -215,39 +215,84 @@ func DefaultCurveProfiles() map[string]CurveProfile {
 	}
 }
 
+// CooldownMode represents the Zero-RPM recovery behavior when returning to idle.
+type CooldownMode string
+
+const (
+	// CooldownKick represents immediate re-assertion of thermal mode to prompt EC curve re-evaluation.
+	CooldownKick CooldownMode = "kick"
+	// CooldownDecay represents waiting for a sustained cool idle dwell period before re-asserting mode.
+	CooldownDecay CooldownMode = "decay"
+	// CooldownOff disables software cooldown assistance and leaves timing to stock firmware.
+	CooldownOff CooldownMode = "off"
+)
+
+// ParseCooldownMode normalizes and parses a string into a CooldownMode enum.
+// Supports aliases: kick/instant/reset, decay/passive/smooth, off/none/factory/disabled.
+func ParseCooldownMode(val string) (CooldownMode, error) {
+	switch strings.ToLower(strings.TrimSpace(val)) {
+	case "kick", "instant", "reset":
+		return CooldownKick, nil
+	case "decay", "passive", "smooth":
+		return CooldownDecay, nil
+	case "off", "none", "factory", "disabled":
+		return CooldownOff, nil
+	default:
+		return "", fmt.Errorf("unknown cooldown mode: %q (valid: kick, decay, off)", val)
+	}
+}
+
+// ValidateCooldownMode verifies that the cooldown mode is valid.
+func ValidateCooldownMode(mode CooldownMode) error {
+	switch mode {
+	case CooldownKick, CooldownDecay, CooldownOff:
+		return nil
+	default:
+		return fmt.Errorf("invalid cooldown mode: %q", mode)
+	}
+}
+
 // Telemetry captures live system metrics for fans, thermal sensors, battery, and daemon state.
 type Telemetry struct {
-	CPUTemp            float64     `json:"cpu_temp"`
-	Fan1RPM            int32       `json:"fan1_rpm"`
-	Fan2RPM            int32       `json:"fan2_rpm"`
-	BatteryPercent     int32       `json:"battery_percent"`
-	BatteryLimit       int32       `json:"battery_limit"`
-	OnAC               bool        `json:"on_ac"`
-	ActiveMode         ThermalMode `json:"active_mode"`
-	AutoMode           bool        `json:"auto_mode"`
-	ActiveCurveProfile string      `json:"active_curve_profile,omitempty"`
-	HasHardwareCurve   bool        `json:"has_hardware_curve"`
+	CPUTemp            float64      `json:"cpu_temp"`
+	Fan1RPM            int32        `json:"fan1_rpm"`
+	Fan2RPM            int32        `json:"fan2_rpm"`
+	BatteryPercent     int32        `json:"battery_percent"`
+	BatteryLimit       int32        `json:"battery_limit"`
+	OnAC               bool         `json:"on_ac"`
+	ActiveMode         ThermalMode  `json:"active_mode"`
+	AutoMode           bool         `json:"auto_mode"`
+	ActiveCurveProfile string       `json:"active_curve_profile,omitempty"`
+	HasHardwareCurve   bool         `json:"has_hardware_curve"`
+	CooldownMode       CooldownMode `json:"cooldown_mode"`
 }
 
 // Config represents persistent daemon settings.
 type Config struct {
-	DefaultMode         ThermalMode             `toml:"default_mode"`
-	DefaultBatteryLimit int32                   `toml:"default_battery_limit"`
-	PollIntervalMs      int                     `toml:"poll_interval_ms"`
-	AutoCurve           bool                    `toml:"auto_curve"`
-	ActiveCurveProfile  string                  `toml:"active_curve_profile"`
-	Curves              map[string]CurveProfile `toml:"curves,omitempty"`
+	DefaultMode           ThermalMode             `toml:"default_mode"`
+	DefaultBatteryLimit   int32                   `toml:"default_battery_limit"`
+	PollIntervalMs        int                     `toml:"poll_interval_ms"`
+	AutoCurve             bool                    `toml:"auto_curve"`
+	ActiveCurveProfile    string                  `toml:"active_curve_profile"`
+	Curves                map[string]CurveProfile `toml:"curves,omitempty"`
+	CooldownMode          CooldownMode            `toml:"cooldown_mode"`
+	CooldownTempThreshold float64                 `toml:"cooldown_temp_threshold"`
+	CooldownDecaySeconds  int                     `toml:"cooldown_decay_seconds"`
 }
 
 // DefaultConfig returns safe out-of-the-box configuration values.
 func DefaultConfig() Config {
 	return Config{
-		DefaultMode:         ModeStandard,
-		DefaultBatteryLimit: 80,
-		PollIntervalMs:      1500,
-		AutoCurve:           false,
-		ActiveCurveProfile:  "balanced",
-		Curves:              DefaultCurveProfiles(),
+		DefaultMode:           ModeStandard,
+		DefaultBatteryLimit:   80,
+		PollIntervalMs:        1500,
+		AutoCurve:             false,
+		ActiveCurveProfile:    "balanced",
+		Curves:                DefaultCurveProfiles(),
+		CooldownMode:          CooldownKick,
+		CooldownTempThreshold: 47.0,
+		CooldownDecaySeconds:  15,
 	}
 }
+
 

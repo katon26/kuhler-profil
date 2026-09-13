@@ -19,20 +19,24 @@ import (
 // TestDBusSignatureAndMarshaling tests mapping between models.Telemetry and D-Bus payload maps.
 func TestDBusSignatureAndMarshaling(t *testing.T) {
 	status := models.Telemetry{
-		CPUTemp:        62.5,
-		Fan1RPM:        3200,
-		Fan2RPM:        0,
-		BatteryPercent: 85,
-		BatteryLimit:   80,
-		OnAC:           true,
+		CPUTemp:            62.5,
+		Fan1RPM:            3200,
+		Fan2RPM:            0,
+		BatteryPercent:     85,
+		BatteryLimit:       80,
+		OnAC:               true,
 		ActiveMode:         models.ModeBoost,
 		AutoMode:           false,
 		ActiveCurveProfile: "balanced",
+		CooldownMode:       models.CooldownKick,
 	}
 
 	exported := dbusapi.FormatStatusMap(status)
 	if exported["active_mode"] != "boost" {
 		t.Errorf("exported active_mode = %v, want boost", exported["active_mode"])
+	}
+	if exported["cooldown_mode"] != "kick" {
+		t.Errorf("exported cooldown_mode = %v, want kick", exported["cooldown_mode"])
 	}
 	if exported["cpu_temp"] != 62.5 {
 		t.Errorf("exported cpu_temp = %v, want 62.5", exported["cpu_temp"])
@@ -264,9 +268,10 @@ type mockBusObject struct {
 	statusMap   interface{}
 	lastMode    string
 	lastLimit   int32
-	lastAuto    bool
-	emptyBody   bool
-	returnError bool
+	lastAuto     bool
+	lastCooldown string
+	emptyBody    bool
+	returnError  bool
 }
 
 func (m *mockBusObject) Call(method string, flags dbus.Flags, args ...interface{}) *dbus.Call {
@@ -300,6 +305,16 @@ func (m *mockBusObject) Call(method string, flags dbus.Flags, args ...interface{
 	case dbusapi.Interface + ".SetAutoMode":
 		if len(args) > 0 {
 			m.lastAuto = args[0].(bool)
+		}
+	case dbusapi.Interface + ".GetCooldownMode":
+		mode := m.lastCooldown
+		if mode == "" {
+			mode = "kick"
+		}
+		call.Body = []interface{}{mode}
+	case dbusapi.Interface + ".SetCooldownMode":
+		if len(args) > 0 {
+			m.lastCooldown = args[0].(string)
 		}
 	default:
 		call.Err = errors.New("unknown method: " + method)
@@ -628,4 +643,82 @@ func TestDBusCurveMethods(t *testing.T) {
 		t.Errorf("nilServer.GetHardwareFanCurves() expected error, got nil")
 	}
 }
+
+func TestDBusCooldownIPC(t *testing.T) {
+	mockFS := driver.NewMockFS()
+	mockFS.WriteFile("/sys/devices/platform/asus-nb-wmi/throttle_thermal_policy", []byte("0\n"))
+	mockFS.WriteFile("/sys/class/power_supply/BAT0/charge_control_end_threshold", []byte("80\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/temp1_input", []byte("50000\n"))
+	mockFS.WriteFile("/sys/class/hwmon/hwmon1/fan1_input", []byte("2000\n"))
+
+	d := driver.NewCustomDriver(mockFS)
+	cfg := models.DefaultConfig()
+	eng := engine.NewEngine(d, cfg, "")
+
+	server := dbusapi.NewServer(eng)
+
+	// Test Server GetCooldownMode default
+	mode, dbusErr := server.GetCooldownMode()
+	if dbusErr != nil {
+		t.Fatalf("server.GetCooldownMode() error: %v", dbusErr)
+	}
+	if mode != "kick" {
+		t.Errorf("expected default cooldown mode 'kick', got %s", mode)
+	}
+
+	// Test Server SetCooldownMode decay
+	if dbusErr := server.SetCooldownMode("decay"); dbusErr != nil {
+		t.Fatalf("server.SetCooldownMode('decay') error: %v", dbusErr)
+	}
+	if eng.GetCooldownMode() != models.CooldownDecay {
+		t.Errorf("eng.GetCooldownMode() = %s, want decay", eng.GetCooldownMode())
+	}
+	mode, _ = server.GetCooldownMode()
+	if mode != "decay" {
+		t.Errorf("server.GetCooldownMode() = %s, want decay", mode)
+	}
+
+	// Test Server SetCooldownMode invalid
+	if dbusErr := server.SetCooldownMode("invalid_mode"); dbusErr == nil {
+		t.Errorf("expected error for invalid cooldown mode, got nil")
+	}
+
+	// Test Server with nil engine
+	nilServer := dbusapi.NewServer(nil)
+	if _, err := nilServer.GetCooldownMode(); err == nil {
+		t.Errorf("expected error from nilServer.GetCooldownMode(), got nil")
+	}
+	if err := nilServer.SetCooldownMode("kick"); err == nil {
+		t.Errorf("expected error from nilServer.SetCooldownMode(), got nil")
+	}
+
+	// Test Client with Mock Caller
+	mockObj := &mockBusObject{lastCooldown: "kick"}
+	client := dbusapi.NewCustomClient(mockObj)
+
+	clientMode, err := client.GetCooldownMode()
+	if err != nil {
+		t.Fatalf("client.GetCooldownMode() error: %v", err)
+	}
+	if clientMode != "kick" {
+		t.Errorf("client.GetCooldownMode() = %s, want kick", clientMode)
+	}
+
+	if err := client.SetCooldownMode("off"); err != nil {
+		t.Fatalf("client.SetCooldownMode('off') error: %v", err)
+	}
+	if mockObj.lastCooldown != "off" {
+		t.Errorf("mockObj.lastCooldown = %s, want off", mockObj.lastCooldown)
+	}
+
+	// Test Client Error
+	mockObj.returnError = true
+	if _, err := client.GetCooldownMode(); err == nil {
+		t.Errorf("expected error on client.GetCooldownMode(), got nil")
+	}
+	if err := client.SetCooldownMode("kick"); err == nil {
+		t.Errorf("expected error on client.SetCooldownMode(), got nil")
+	}
+}
+
 
