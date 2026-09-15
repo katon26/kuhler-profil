@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="14" y1="14" x2="114" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1C2128"/>
+      <stop offset="100%" stop-color="#0D1117"/>
+    </linearGradient>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="drop" x="-10%" y="-6%" width="120%" height="124%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Dark glass squircle -->
+  <rect x="14" y="14" width="100" height="100" rx="26" fill="url(#bg)" filter="url(#drop)"/>
+
+  <!-- Ambient glow -->
+  <circle cx="64" cy="64" r="38" fill="#22C55E" opacity="0.05"/>
+
+  <!-- Glass edge -->
+  <rect x="15" y="15" width="98" height="98" rx="25" fill="none" stroke="#4AFF82" stroke-width="0.6" opacity="0.15"/>
+
+  <!-- Fan bearing — 4 swept blades -->
+  <g transform="translate(64, 64)" filter="url(#glow)">
+
+    <!-- Outer bearing ring -->
+    <circle cx="0" cy="0" r="42" fill="none" stroke="#4AFF82" stroke-width="0.8" opacity="0.15"/>
+
+    <!--
+      Blade anatomy (clockwise sweep):
+        Face A (bright): large leading face — sweeps from hub outward counter-clockwise
+        Face B (dark):   narrow trailing edge — the underside/shadow strip
+        Crease line:     curved spine from hub to outer tip
+    -->
+
+    <!-- Blade 1 (up) -->
+    <path d="M -3,-13 C -8,-18 -18,-26 -24,-32 C -20,-37 -10,-41 -2,-41 C 2,-40 4,-36 2,-28 Z" fill="#4AFF82"/>
+    <path d="M 2,-28 C 4,-36 2,-40 -2,-41 C 4,-41 12,-38 18,-32 C 14,-26 8,-18 5,-13 Z" fill="#00884A"/>
+
+    <!-- Blade 2 (right) -->
+    <g transform="rotate(90)">
+      <path d="M -3,-13 C -8,-18 -18,-26 -24,-32 C -20,-37 -10,-41 -2,-41 C 2,-40 4,-36 2,-28 Z" fill="#4AFF82"/>
+      <path d="M 2,-28 C 4,-36 2,-40 -2,-41 C 4,-41 12,-38 18,-32 C 14,-26 8,-18 5,-13 Z" fill="#00884A"/>
+    </g>
+
+    <!-- Blade 3 (down) -->
+    <g transform="rotate(180)">
+      <path d="M -3,-13 C -8,-18 -18,-26 -24,-32 C -20,-37 -10,-41 -2,-41 C 2,-40 4,-36 2,-28 Z" fill="#4AFF82"/>
+      <path d="M 2,-28 C 4,-36 2,-40 -2,-41 C 4,-41 12,-38 18,-32 C 14,-26 8,-18 5,-13 Z" fill="#00884A"/>
+    </g>
+
+    <!-- Blade 4 (left) -->
+    <g transform="rotate(270)">
+      <path d="M -3,-13 C -8,-18 -18,-26 -24,-32 C -20,-37 -10,-41 -2,-41 C 2,-40 4,-36 2,-28 Z" fill="#4AFF82"/>
+      <path d="M 2,-28 C 4,-36 2,-40 -2,-41 C 4,-41 12,-38 18,-32 C 14,-26 8,-18 5,-13 Z" fill="#00884A"/>
+    </g>
+
+    <!-- Hub bearing -->
+    <circle cx="0" cy="0" r="12" fill="#0D1117"/>
+    <circle cx="0" cy="0" r="12" fill="none" stroke="#4AFF82" stroke-width="1.2" opacity="0.4"/>
+    <circle cx="0" cy="0" r="9" fill="none" stroke="#33FF66" stroke-width="0.5" opacity="0.2"/>
+
+    <!-- ü glyph -->
+    <path d="M -3.5,-1.5 L -3.5,2 Q -3.5,5.2 0,5.2 Q 3.5,5.2 3.5,2 L 3.5,-1.5"
+          fill="none" stroke="#4AFF82" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="-2.5" cy="-4.2" r="1.1" fill="#4AFF82"/>
+    <circle cx="2.5" cy="-4.2" r="1.1" fill="#4AFF82"/>
+  </g>
+</svg>

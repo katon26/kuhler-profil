@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-UUID="kuhlerprofil@asus-linux.org"
+UUID="kuhlerprofil@katon26.github.io"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXT_DEST="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 
@@ -28,7 +28,16 @@ case "${ACTION}" in
         mkdir -p "${EXT_DEST}"
         cp -v "${SCRIPT_DIR}/metadata.json" "${EXT_DEST}/"
         cp -v "${SCRIPT_DIR}/extension.js" "${EXT_DEST}/"
+        if [ -f "${SCRIPT_DIR}/prefs.js" ]; then
+            cp -v "${SCRIPT_DIR}/prefs.js" "${EXT_DEST}/"
+        fi
+        if [ -f "${SCRIPT_DIR}/prefs.css" ]; then
+            cp -v "${SCRIPT_DIR}/prefs.css" "${EXT_DEST}/"
+        fi
         cp -v "${SCRIPT_DIR}/stylesheet.css" "${EXT_DEST}/"
+        if [ -d "${SCRIPT_DIR}/src" ]; then
+            cp -rv "${SCRIPT_DIR}/src" "${EXT_DEST}/"
+        fi
         
         echo ""
         echo "Extension successfully installed to ${EXT_DEST}"
@@ -73,15 +82,22 @@ case "${ACTION}" in
         ;;
 
     pack)
-        echo "Packaging ${UUID}.zip..."
-        ZIP_NAME="${SCRIPT_DIR}/${UUID}.zip"
-        rm -f "${ZIP_NAME}"
+        echo "Packaging ${UUID}..."
+        rm -f "${SCRIPT_DIR}/${UUID}.zip" "${SCRIPT_DIR}/${UUID}.shell-extension.zip"
         if command -v gnome-extensions >/dev/null 2>&1; then
-            gnome-extensions pack "${SCRIPT_DIR}" --force --out-dir="${SCRIPT_DIR}"
-            echo "Packaged extension to ${ZIP_NAME}"
+            EXTRA_ARGS=()
+            [ -f "${SCRIPT_DIR}/prefs.js" ] && EXTRA_ARGS+=(--extra-source=prefs.js)
+            [ -f "${SCRIPT_DIR}/prefs.css" ] && EXTRA_ARGS+=(--extra-source=prefs.css)
+            [ -d "${SCRIPT_DIR}/src" ] && EXTRA_ARGS+=(--extra-source=src)
+            gnome-extensions pack "${SCRIPT_DIR}" "${EXTRA_ARGS[@]}" --force --out-dir="${SCRIPT_DIR}"
+            echo "Packaged extension to ${SCRIPT_DIR}/${UUID}.shell-extension.zip"
         else
-            (cd "${SCRIPT_DIR}" && zip -r "${ZIP_NAME}" metadata.json extension.js stylesheet.css)
-            echo "Packaged extension to ${ZIP_NAME} (using zip)"
+            ZIP_FILES=(metadata.json extension.js stylesheet.css)
+            [ -f "${SCRIPT_DIR}/prefs.js" ] && ZIP_FILES+=(prefs.js)
+            [ -f "${SCRIPT_DIR}/prefs.css" ] && ZIP_FILES+=(prefs.css)
+            [ -d "${SCRIPT_DIR}/src" ] && ZIP_FILES+=(src)
+            (cd "${SCRIPT_DIR}" && zip -r "${SCRIPT_DIR}/${UUID}.shell-extension.zip" "${ZIP_FILES[@]}")
+            echo "Packaged extension to ${SCRIPT_DIR}/${UUID}.shell-extension.zip (using zip)"
         fi
         ;;
 

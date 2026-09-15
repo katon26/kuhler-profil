@@ -1,0 +1,42 @@
+/*
+ * SPDX-License-Identifier: MIT
+ * prefs.css - Styles for KühlerProfil preferences window (GTK4 / Libadwaita).
+ */
+
+.kuhlerprofil-version-pill {
+  padding: 6px 14px;
+  min-height: 0;
+  border-radius: 999px;
+  border: none;
+  background-color: alpha(@accent_bg_color, 0.18);
+  color: @accent_color;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.kuhlerprofil-version-pill:hover {
+  background-color: alpha(@accent_bg_color, 0.26);
+}
+
+.kuhlerprofil-version-pill:active {
+  background-color: alpha(@accent_bg_color, 0.34);
+}
+
+.kuhlerprofil-coffee-button {
+  padding: 8px 16px;
+  min-height: 0;
+  border-radius: 999px;
+  border: none;
+  background-color: alpha(@accent_bg_color, 0.18);
+  color: @accent_color;
+  font-weight: 600;
+}
+
+.kuhlerprofil-coffee-button:hover {
+  background-color: alpha(@accent_bg_color, 0.26);
+}
+
+.kuhlerprofil-coffee-button:active {
+  background-color: alpha(@accent_bg_color, 0.34);
+}

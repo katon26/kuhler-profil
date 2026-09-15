@@ -1,7 +1,7 @@
 {
   "name": "KühlerProfil",
-  "description": "ASUS VivoBook & ZenBook thermal modes, fan speed telemetry and battery health charging limiter",
-  "uuid": "kuhlerprofil@asus-linux.org",
+  "description": "ASUS VivoBook & ZenBook thermal profiles, dynamic fan curves, zero-RPM cooldown governor, and battery health charging limiter",
+  "uuid": "kuhlerprofil@katon26.github.io",
   "shell-version": [
     "45",
     "46",
@@ -10,7 +10,8 @@
     "49",
     "50"
   ],
-  "url": "https://github.com/asus-linux/kuhler-profil",
+  "url": "https://github.com/katon26/kuhler-profil",
   "gettext-domain": "kuhlerprofil",
-  "version": 1
+  "version": 2,
+  "version-name": "0.1.0"
 }

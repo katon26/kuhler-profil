@@ -38,7 +38,7 @@ runTest('metadata.json exists and is valid JSON', () => {
     const content = fs.readFileSync(metadataPath, 'utf8');
     const metadata = JSON.parse(content);
 
-    assert.equal(metadata.uuid, 'kuhlerprofil@asus-linux.org', 'UUID must match kuhlerprofil@asus-linux.org');
+    assert.equal(metadata.uuid, 'kuhlerprofil@katon26.github.io', 'UUID must match kuhlerprofil@katon26.github.io');
     assert(metadata.name && metadata.name.includes('KühlerProfil'), 'Name must contain KühlerProfil');
     assert(Array.isArray(metadata['shell-version']), 'shell-version must be an array');
     assert(metadata['shell-version'].includes('45'), 'shell-version must support GNOME 45');
@@ -74,7 +74,7 @@ runTest('install.sh exists, is executable, and contains correct UUID', () => {
     const installPath = path.join(EXTENSION_DIR, 'install.sh');
     assert(fs.existsSync(installPath), 'install.sh must exist');
     const content = fs.readFileSync(installPath, 'utf8');
-    assert(content.includes('UUID="kuhlerprofil@asus-linux.org"'), 'install.sh must define extension UUID');
+    assert(content.includes('UUID="kuhlerprofil@katon26.github.io"'), 'install.sh must define extension UUID');
     assert(content.includes('metadata.json') && content.includes('extension.js'), 'install.sh must copy extension files');
 });
 
@@ -244,4 +244,162 @@ runTest('Cooldown modes list covers Zero-RPM specifications (kick, decay, off)',
     assert(code.includes('_buildCooldownSection'), 'extension.js must define _buildCooldownSection');
 });
 
+// 10. HIG & Lifecycle: Zero top-level gettext invocations (prevents module import crashes in GNOME 45-50)
+runTest('No raw top-level gettext calls that crash during module import', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    // Ensure THERMAL_MODES and COOLDOWN_MODES use getters/safeTranslate, NOT raw static _('...')
+    const lines = code.split('\n');
+    let insideTopLevelArray = false;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.includes('export const THERMAL_MODES') || line.includes('export const COOLDOWN_MODES') || line.includes('export const CURVE_PROFILES')) {
+            insideTopLevelArray = true;
+        }
+        if (insideTopLevelArray) {
+            assert(!line.match(/\bname:\s*_\(/), `Line ${i + 1} must not call raw _() at module level`);
+            assert(!line.match(/\bdesc:\s*_\(/), `Line ${i + 1} must not call raw _() at module level`);
+            if (line.includes('];')) {
+                insideTopLevelArray = false;
+            }
+        }
+    }
+});
+
+// 11. HIG & Lifecycle: enable() initializes translations and disable() performs clean teardown
+runTest('KuhlerProfilExtension calls initTranslations() in enable() and cleans up in disable()', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('this.initTranslations()'), 'enable() must call this.initTranslations()');
+    assert(code.includes('this._client.stop()'), 'disable() must stop D-Bus client');
+    assert(code.includes('this._indicator.destroy()'), 'disable() must destroy indicator');
+    // Ensure no double-destruction of quickSettingsItems
+    assert(!code.includes('this._indicator.quickSettingsItems.forEach(item => item.destroy())'), 'Must not double-destroy quickSettingsItems');
+});
+
+// 12. D-Bus IPC & Resource Management: Clean signal disconnection
+runTest('KuhlerProfilDBusClient cleans up signals using disconnectSignal and signal_unsubscribe', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('disconnectSignal'), 'Client must use disconnectSignal for proxy signals');
+    assert(code.includes('signal_unsubscribe'), 'Client must unsubscribe bus connection signals');
+    assert(code.includes('source_remove'), 'Client must remove GLib timeouts on stop');
+});
+
+// 13. Accessibility & GNOME HIG: Accessible roles and names
+runTest('Interactive buttons define accessible_role and accessible_name for HIG accessibility', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('accessible_role: Atk.Role.RADIO_BUTTON'), 'Mode and cooldown buttons must set RADIO_BUTTON role');
+    assert(code.includes('accessible_name:'), 'Buttons must provide accessible_name for screen readers');
+});
+
+// 14. Extension Preferences Window: prefs.js exists and exports valid ExtensionPreferences
+runTest('prefs.js exists and exports ExtensionPreferences subclass with Libadwaita UI', () => {
+    const prefsPath = path.join(EXTENSION_DIR, 'prefs.js');
+    assert(fs.existsSync(prefsPath), 'prefs.js must exist for Extension Manager preferences');
+    const code = fs.readFileSync(prefsPath, 'utf8');
+    assert(code.includes('export default class KuhlerProfilPreferences extends ExtensionPreferences'), 'Must export ExtensionPreferences subclass');
+    assert(code.includes('fillPreferencesWindow(window)'), 'Must implement fillPreferencesWindow');
+    assert(code.includes('Adw.PreferencesPage'), 'Must use Adw.PreferencesPage');
+    assert(code.includes('Adw.PreferencesGroup'), 'Must use Adw.PreferencesGroup');
+    assert(code.includes('Adw.ComboRow'), 'Must use Adw.ComboRow');
+    assert(code.includes('Adw.SwitchRow'), 'Must use Adw.SwitchRow');
+});
+
+// 15. Installation & Packaging: install.sh handles prefs.js and metadata.json has version 2
+runTest('install.sh and metadata.json properly include prefs.js and GNOME 45-50 support', () => {
+    const installPath = path.join(EXTENSION_DIR, 'install.sh');
+    const installCode = fs.readFileSync(installPath, 'utf8');
+    assert(installCode.includes('prefs.js'), 'install.sh must copy and pack prefs.js');
+
+    const metaPath = path.join(EXTENSION_DIR, 'metadata.json');
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+    assert(meta['shell-version'].includes('49'), 'metadata.json must support GNOME 49');
+    assert(meta['shell-version'].includes('50'), 'metadata.json must support GNOME 50');
+    assert.equal(meta.version, 2, 'Extension version must be 2');
+});
+
+// 16. D-Bus Resilience: getSafeBus handles missing bus gracefully without throwing IOError
+runTest('getSafeBus safely detects system or session bus without uncaught exceptions', () => {
+    const extCode = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(extCode.includes('function getSafeBus()'), 'extension.js must define getSafeBus');
+    assert(extCode.includes('Gio.DBus.system'), 'must check Gio.DBus.system');
+    assert(extCode.includes('Gio.DBus.session'), 'must fall back to Gio.DBus.session');
+
+    const prefsCode = fs.readFileSync(path.join(EXTENSION_DIR, 'prefs.js'), 'utf8');
+    assert(prefsCode.includes('function getSafeBus()'), 'prefs.js must define getSafeBus');
+    assert(!prefsCode.includes('let bus = Gio.DBus.system;\n        if (!bus)'), 'prefs.js must not access Gio.DBus.system without try/catch');
+});
+
+// 17. GNOME HIG Stylesheet Audit: Clean St CSS without invalid properties & with accent colors
+runTest('stylesheet.css strictly adheres to St CSS parser rules and GNOME HIG accent colors', () => {
+    const css = fs.readFileSync(path.join(EXTENSION_DIR, 'stylesheet.css'), 'utf8');
+    assert(!css.includes('text-transform'), 'St CSS does not support text-transform; must be removed to prevent journal warnings');
+    assert(!css.includes('outline-offset'), 'St CSS does not support outline-offset; must be removed to prevent journal warnings');
+    assert(css.includes('-st-accent-color'), 'stylesheet.css must support GNOME HIG -st-accent-color');
+    assert(css.includes(':checked'), 'stylesheet.css must support :checked pseudo-class for active mode buttons');
+    assert(css.includes('kuhlerprofil-temp-cool'), 'stylesheet.css must define .kuhlerprofil-temp-cool');
+    assert(css.includes('kuhlerprofil-temp-hot'), 'stylesheet.css must define .kuhlerprofil-temp-hot');
+});
+
+// 18. Accessibility (a11y) HIG Audit: Buttons set toggle_mode: true and update checked state
+runTest('Buttons set toggle_mode: true and update checked state for screen reader (Orca) compatibility', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    const toggleModeCount = (code.match(/toggle_mode:\s*true/g) || []).length;
+    // Mode, curve, cooldown, and battery buttons all specify toggle_mode: true
+    assert(toggleModeCount >= 4, `Expected at least 4 toggle_mode: true button declarations, found ${toggleModeCount}`);
+    assert(code.includes('btn.checked = isSelected;'), '_updateUI must update btn.checked for Atk.StateType.CHECKED exposure');
+});
+
+// 19. QuickMenuToggle HIG: Accessible name, header settings button, and indicator binding
+runTest('QuickMenuToggle provides menuButtonAccessibleName, header settings button, and bound indicator icon', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('menuButtonAccessibleName:'), 'QuickMenuToggle must define menuButtonAccessibleName');
+    assert(code.includes('addHeaderSuffix'), 'QuickMenuToggle must add header settings suffix button for instant preferences');
+    assert(code.includes('emblem-system-symbolic'), 'Header button must use emblem-system-symbolic icon');
+    assert(code.includes("bind_property('icon-name'"), 'KuhlerProfilIndicator must bind icon-name between toggle and indicator');
+});
+
+// 20. Event Handling: Guard against recursive setToggleState feedback loop on auto governor switch
+runTest('Auto governor switch is guarded against re-entrant toggled feedback loops', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('_syncingAutoSwitch'), 'extension.js must use _syncingAutoSwitch loop guard');
+    assert(code.includes('if (this._syncingAutoSwitch) return;'), 'toggled handler must exit early if syncing');
+});
+
+// 21. Teardown & Overlay Cleanup: KuhlerProfilToggle.destroy() destroys this.menu
+runTest('KuhlerProfilToggle destroys this.menu on teardown to prevent overlay actor leaks', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('if (this.menu) {\n            this.menu.destroy();\n        }'), 'destroy() must call this.menu.destroy()');
+});
+
+// 22. Preferences Window HIG: Live Telemetry, signal subscriptions, and window close-request cleanup
+runTest('prefs.js implements Live Telemetry, dynamic signal listeners, and clean window destruction', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'prefs.js'), 'utf8');
+    assert(code.includes('Live Telemetry & Diagnostics'), 'prefs.js must feature Live Telemetry & Diagnostics');
+    assert(code.includes('connectSignal'), 'prefs.js must subscribe to D-Bus signals for real-time sync');
+    assert(code.includes('TelemetryTick'), 'prefs.js must update on TelemetryTick signal');
+    assert(code.includes('close-request'), 'prefs.js must clean up signal connections on window close-request');
+});
+
+// 23. Preferences About Page & Brand Identity (GNOME HIG)
+runTest('prefs.js implements About page with author links, version pill, QR coffee button, and GitHub sponsor link', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'prefs.js'), 'utf8');
+    assert(code.includes('createAboutPage'), 'prefs.js must implement createAboutPage');
+    assert(code.includes('https://katon26.github.io'), 'About page must link to Katon (katon26)');
+    assert(code.includes('https://buymeacoffee.com/fuhg'), 'About page must link to Buy Me a Coffee');
+    assert(code.includes('https://github.com/sponsors/katon26'), 'About page must link to GitHub Sponsors');
+    assert(code.includes('kuhlerprofil-version-pill'), 'About page must style version pill');
+    assert(code.includes('kuhlerprofil-coffee-button'), 'About page must style sponsor coffee button');
+    assert(code.includes('_ensureCustomCss'), 'prefs.js must load custom css provider');
+
+    const cssCode = fs.readFileSync(path.join(EXTENSION_DIR, 'prefs.css'), 'utf8');
+    assert(cssCode.includes('.kuhlerprofil-version-pill'), 'prefs.css must define .kuhlerprofil-version-pill');
+    assert(cssCode.includes('.kuhlerprofil-coffee-button'), 'prefs.css must define .kuhlerprofil-coffee-button');
+
+    const srcDir = path.join(EXTENSION_DIR, 'src');
+    assert(fs.existsSync(path.join(srcDir, 'kuhlerprofil-logo.svg')), 'kuhlerprofil-logo.svg must exist in src/');
+    assert(fs.existsSync(path.join(srcDir, 'qr-code-fuhg.svg')), 'qr-code-fuhg.svg must exist in src/');
+    assert(fs.existsSync(path.join(srcDir, 'github-symbolic.svg')), 'github-symbolic.svg must exist in src/');
+});
+
 console.log(`\nAll ${passedTests}/${totalTests} extension tests passed successfully! ✨`);
+
+
