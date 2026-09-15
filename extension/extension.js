@@ -1,11 +1,13 @@
 /**
  * KühlerProfil GNOME Shell Quick Settings Extension
  * Provides real-time thermal monitoring, fan RPM telemetry, ASUS thermal profile
- * switching, and battery charge threshold control over Linux D-Bus IPC.
+ * switching, dynamic fan curves, zero-RPM cooldown assistance, and battery health
+ * charge threshold control over Linux D-Bus IPC.
  *
  * Supported GNOME Shell Versions: 45, 46, 47, 48, 49, 50
  */
 
+import Atk from 'gi://Atk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
@@ -76,16 +78,53 @@ export const KuhlerProfilInterfaceXML = `
 
 export const KoolThingInterfaceXML = KuhlerProfilInterfaceXML;
 
+/**
+ * Safe translation wrapper that falls back gracefully to English
+ * if called before gettext is initialized.
+ */
+function safeTranslate(str) {
+    try {
+        if (typeof _ === 'function') {
+            return _(str);
+        }
+    } catch (_) {}
+    return str;
+}
+
+/**
+ * Safely resolves the system or session D-Bus connection without
+ * throwing unhandled IOErrors if a bus socket is absent.
+ */
+export function getSafeBus() {
+    try {
+        if (Gio.DBus.system) return Gio.DBus.system;
+    } catch (_) {}
+    try {
+        if (Gio.DBus.session) return Gio.DBus.session;
+    } catch (_) {}
+    return null;
+}
+
+/**
+ * Thermal modes, cooldown options, and curve profiles.
+ * Names and descriptions use dynamic getters so no gettext calls execute at module import.
+ */
 export const THERMAL_MODES = [
-    { id: 'silent', name: _('Silent'), icon: 'power-profile-power-saver-symbolic', desc: _('Quiet') },
-    { id: 'standard', name: _('Standard'), icon: 'power-profile-balanced-symbolic', desc: _('Balanced') },
-    { id: 'boost', name: _('Boost'), icon: 'power-profile-performance-symbolic', desc: _('Max Cooling') },
+    { id: 'silent', get name() { return safeTranslate('Silent'); }, icon: 'power-profile-power-saver-symbolic', get desc() { return safeTranslate('Quiet'); } },
+    { id: 'standard', get name() { return safeTranslate('Standard'); }, icon: 'power-profile-balanced-symbolic', get desc() { return safeTranslate('Balanced'); } },
+    { id: 'boost', get name() { return safeTranslate('Boost'); }, icon: 'power-profile-performance-symbolic', get desc() { return safeTranslate('Max Cooling'); } },
 ];
 
 export const COOLDOWN_MODES = [
-    { id: 'kick', name: _('Kick'), desc: _('Instant Reset') },
-    { id: 'decay', name: _('Decay'), desc: _('15s Smooth') },
-    { id: 'off', name: _('Off'), desc: _('Factory') },
+    { id: 'kick', get name() { return safeTranslate('Kick'); }, get desc() { return safeTranslate('Instant Reset'); } },
+    { id: 'decay', get name() { return safeTranslate('Decay'); }, get desc() { return safeTranslate('15s Smooth'); } },
+    { id: 'off', get name() { return safeTranslate('Off'); }, get desc() { return safeTranslate('Factory'); } },
+];
+
+export const CURVE_PROFILES = [
+    { id: 'quiet', get name() { return safeTranslate('Quiet'); }, get desc() { return safeTranslate('Acoustic Priority'); } },
+    { id: 'balanced', get name() { return safeTranslate('Balanced'); }, get desc() { return safeTranslate('Dynamic Everyday'); } },
+    { id: 'aggressive', get name() { return safeTranslate('Aggressive'); }, get desc() { return safeTranslate('Maximum Cooling'); } },
 ];
 
 export const BATTERY_LIMITS = [60, 80, 100];
@@ -142,7 +181,12 @@ export function getModeInfo(mode) {
     const normalized = String(mode || 'standard').toLowerCase();
     const found = THERMAL_MODES.find(m => m.id === normalized);
     if (found) return found;
-    return { id: normalized, name: normalized.charAt(0).toUpperCase() + normalized.slice(1), icon: 'power-profile-balanced-symbolic', desc: '' };
+    return {
+        id: normalized,
+        name: normalized.charAt(0).toUpperCase() + normalized.slice(1),
+        icon: 'power-profile-balanced-symbolic',
+        desc: '',
+    };
 }
 
 /**
@@ -155,7 +199,6 @@ export class KuhlerProfilDBusClient {
         this._signalIds = [];
         this._busSignalId = 0;
         this._pollTimerId = 0;
-        this._reconnectTimerId = 0;
         this._connection = null;
         this._connected = false;
         this._lastTelemetry = null;
@@ -163,7 +206,7 @@ export class KuhlerProfilDBusClient {
 
     start() {
         this._initProxy();
-        // Poll every 3 seconds as fallback / watchdog for live metrics
+        // Poll every 3 seconds as watchdog for live metrics
         this._pollTimerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 3, () => {
             if (this._connected && this._proxy) {
                 this.getStatus().catch(() => {});
@@ -178,10 +221,6 @@ export class KuhlerProfilDBusClient {
         if (this._pollTimerId) {
             GLib.source_remove(this._pollTimerId);
             this._pollTimerId = 0;
-        }
-        if (this._reconnectTimerId) {
-            GLib.source_remove(this._reconnectTimerId);
-            this._reconnectTimerId = 0;
         }
         this._cleanupSignals();
         this._proxy = null;
@@ -219,7 +258,11 @@ export class KuhlerProfilDBusClient {
         if (this._proxy && this._signalIds.length > 0) {
             for (const id of this._signalIds) {
                 try {
-                    this._proxy.disconnect(id);
+                    if (typeof this._proxy.disconnectSignal === 'function') {
+                        this._proxy.disconnectSignal(id);
+                    } else if (typeof this._proxy.disconnect === 'function') {
+                        this._proxy.disconnect(id);
+                    }
                 } catch (_) {}
             }
             this._signalIds = [];
@@ -235,11 +278,12 @@ export class KuhlerProfilDBusClient {
     async _initProxy() {
         try {
             const KuhlerProfilProxyWrapper = Gio.DBusProxy.makeProxyWrapper(KuhlerProfilInterfaceXML);
-            
-            // Try System bus first (standard for kuhlerprofild daemon)
-            let bus = Gio.DBus.system;
+
+            const bus = getSafeBus();
             if (!bus) {
-                bus = Gio.DBus.session;
+                this._connected = false;
+                this._notify(null);
+                return;
             }
             this._connection = bus;
 
@@ -269,7 +313,6 @@ export class KuhlerProfilDBusClient {
         if (!this._proxy) return;
 
         try {
-            // Connect to signal proxies
             const sigModeId = this._proxy.connectSignal('ThermalModeChanged', (_proxy, _sender, [mode]) => {
                 if (this._lastTelemetry) {
                     this._lastTelemetry.activeMode = String(mode).toLowerCase();
@@ -555,10 +598,11 @@ export const KuhlerProfilToggle = GObject.registerClass(
 class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
     _init(extension, client, statusIndicator) {
         super._init({
-            title: _('KühlerProfil'),
-            subtitle: _('Connecting...'),
+            title: safeTranslate('KühlerProfil'),
+            subtitle: safeTranslate('Connecting…'),
             iconName: 'power-profile-balanced-symbolic',
             toggleMode: true,
+            menuButtonAccessibleName: safeTranslate('Open KühlerProfil menu'),
         });
 
         this._extension = extension;
@@ -568,11 +612,12 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._batteryButtons = new Map();
         this._curveButtons = new Map();
         this._cooldownButtons = new Map();
+        this._syncingAutoSwitch = false;
         this._unsubscribe = null;
 
         this._buildMenu();
 
-        // Connect main toggle click to switch mode / toggle auto
+        // Connect main toggle click to cycle mode or toggle auto
         this.connect('clicked', () => {
             this._onMainToggleClicked();
         });
@@ -586,9 +631,29 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         // Set Header
         this.menu.setHeader(
             'power-profile-balanced-symbolic',
-            _('KühlerProfil'),
-            _('Thermal Governor & Battery Health')
+            safeTranslate('KühlerProfil'),
+            safeTranslate('ASUS Thermal & Battery Care')
         );
+
+        // Header settings button for instant Libadwaita Preferences access (GNOME HIG)
+        const headerSettingsBtn = new St.Button({
+            style_class: 'icon-button',
+            child: new St.Icon({
+                icon_name: 'emblem-system-symbolic',
+                style_class: 'popup-menu-icon',
+            }),
+            can_focus: true,
+            accessible_name: safeTranslate('Open Preferences'),
+        });
+        headerSettingsBtn.connect('clicked', () => {
+            try {
+                Main.panel.closeQuickSettings();
+                this._extension.openPreferences();
+            } catch (err) {
+                console.error(`[KühlerProfil] Failed to open preferences: ${err}`);
+            }
+        });
+        this.menu.addHeaderSuffix(headerSettingsBtn);
 
         // Telemetry Section
         this._buildTelemetrySection();
@@ -602,13 +667,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Battery Care Limit Section
-        this._buildBatteryLimitSection();
-
-        // Separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
-        // Fan Curve Profile Section
+        // Dynamic Auto Governor & Fan Curve Section
         this._buildCurveProfileSection();
 
         // Separator
@@ -620,13 +679,13 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Auto Governor Switch
-        this._buildAutoGovernorSection();
+        // Battery Care Limit Section
+        this._buildBatteryLimitSection();
 
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        // Status & Connection Footer
+        // Status & Connection Footer with Preferences Action
         this._buildStatusFooter();
     }
 
@@ -638,34 +697,46 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         const gridBox = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-telemetry-grid',
+            style_class: 'kuhlerprofil-telemetry-grid',
             x_expand: true,
         });
 
         // Row 1: CPU Temp & Battery
         const row1 = new St.BoxLayout({
             vertical: false,
-            style_class: 'koolthing-telemetry-row',
+            style_class: 'kuhlerprofil-telemetry-row',
             x_expand: true,
         });
 
         this._tempCard = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-metric-card',
+            style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
         });
-        const tempLabel = new St.Label({ text: _('CPU Temperature'), style_class: 'koolthing-metric-label' });
-        this._tempValue = new St.Label({ text: '-- °C', style_class: 'koolthing-metric-value' });
+        const tempLabel = new St.Label({
+            text: safeTranslate('CPU Temperature'),
+            style_class: 'kuhlerprofil-metric-label',
+        });
+        this._tempValue = new St.Label({
+            text: '-- °C',
+            style_class: 'kuhlerprofil-metric-value',
+        });
         this._tempCard.add_child(tempLabel);
         this._tempCard.add_child(this._tempValue);
 
         this._batCard = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-metric-card',
+            style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
         });
-        const batLabel = new St.Label({ text: _('Battery Level'), style_class: 'koolthing-metric-label' });
-        this._batValue = new St.Label({ text: '-- % (AC)', style_class: 'koolthing-metric-value' });
+        const batLabel = new St.Label({
+            text: safeTranslate('Battery & Power'),
+            style_class: 'kuhlerprofil-metric-label',
+        });
+        this._batValue = new St.Label({
+            text: '-- % (AC)',
+            style_class: 'kuhlerprofil-metric-value',
+        });
         this._batCard.add_child(batLabel);
         this._batCard.add_child(this._batValue);
 
@@ -675,27 +746,39 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         // Row 2: Fan 1 & Fan 2 RPM
         const row2 = new St.BoxLayout({
             vertical: false,
-            style_class: 'koolthing-telemetry-row',
+            style_class: 'kuhlerprofil-telemetry-row',
             x_expand: true,
         });
 
         this._fan1Card = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-metric-card',
+            style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
         });
-        const fan1Label = new St.Label({ text: _('CPU Fan (Fan 1)'), style_class: 'koolthing-metric-label' });
-        this._fan1Value = new St.Label({ text: '-- RPM', style_class: 'koolthing-metric-value' });
+        const fan1Label = new St.Label({
+            text: safeTranslate('CPU Fan (Fan 1)'),
+            style_class: 'kuhlerprofil-metric-label',
+        });
+        this._fan1Value = new St.Label({
+            text: '-- RPM',
+            style_class: 'kuhlerprofil-metric-value',
+        });
         this._fan1Card.add_child(fan1Label);
         this._fan1Card.add_child(this._fan1Value);
 
         this._fan2Card = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-metric-card',
+            style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
         });
-        const fan2Label = new St.Label({ text: _('GPU Fan (Fan 2)'), style_class: 'koolthing-metric-label' });
-        this._fan2Value = new St.Label({ text: '-- RPM', style_class: 'koolthing-metric-value' });
+        const fan2Label = new St.Label({
+            text: safeTranslate('GPU Fan (Fan 2)'),
+            style_class: 'kuhlerprofil-metric-label',
+        });
+        this._fan2Value = new St.Label({
+            text: '-- RPM',
+            style_class: 'kuhlerprofil-metric-value',
+        });
         this._fan2Card.add_child(fan2Label);
         this._fan2Card.add_child(this._fan2Value);
 
@@ -716,27 +799,30 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         const container = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-section',
+            style_class: 'kuhlerprofil-section',
             x_expand: true,
         });
 
         const title = new St.Label({
-            text: _('Thermal Profile'),
-            style_class: 'koolthing-section-title',
+            text: safeTranslate('ASUS Thermal Profile'),
+            style_class: 'kuhlerprofil-section-title',
         });
         container.add_child(title);
 
         const btnGroup = new St.BoxLayout({
             vertical: false,
-            style_class: 'koolthing-button-group',
+            style_class: 'kuhlerprofil-button-group',
             x_expand: true,
         });
 
         for (const mode of THERMAL_MODES) {
             const btn = new St.Button({
                 label: mode.name,
-                style_class: 'koolthing-mode-button',
+                style_class: 'kuhlerprofil-mode-button',
                 can_focus: true,
+                toggle_mode: true,
+                accessible_role: Atk.Role.RADIO_BUTTON,
+                accessible_name: `${mode.name} mode`,
                 x_expand: true,
             });
 
@@ -755,54 +841,29 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this.menu.addMenuItem(item);
     }
 
-    _buildBatteryLimitSection() {
-        const item = new PopupMenu.PopupBaseMenuItem({
-            reactive: false,
-            can_focus: false,
-        });
-
-        const container = new St.BoxLayout({
-            vertical: true,
-            style_class: 'koolthing-section',
-            x_expand: true,
-        });
-
-        const title = new St.Label({
-            text: _('Battery Health Limit'),
-            style_class: 'koolthing-section-title',
-        });
-        container.add_child(title);
-
-        const btnGroup = new St.BoxLayout({
-            vertical: false,
-            style_class: 'koolthing-button-group',
-            x_expand: true,
-        });
-
-        for (const limit of BATTERY_LIMITS) {
-            const btn = new St.Button({
-                label: `${limit}%`,
-                style_class: 'koolthing-battery-button',
-                can_focus: true,
-                x_expand: true,
-            });
-
-            btn.connect('clicked', () => {
-                this._client.setBatteryLimit(limit).catch(err => {
-                    console.error(`[KühlerProfil] Failed to set battery limit ${limit}%: ${err}`);
-                });
-            });
-
-            this._batteryButtons.set(limit, btn);
-            btnGroup.add_child(btn);
-        }
-
-        container.add_child(btnGroup);
-        item.add_child(container);
-        this.menu.addMenuItem(item);
-    }
-
     _buildCurveProfileSection() {
+        // Auto Governor Switch
+        this._autoSwitch = new PopupMenu.PopupSwitchMenuItem(
+            safeTranslate('Dynamic Auto-Governor'),
+            false
+        );
+
+        this._autoSwitch.connect('toggled', (item, state) => {
+            if (this._syncingAutoSwitch) return;
+            this._client.setAutoMode(state).catch(err => {
+                console.error(`[KühlerProfil] Failed to set auto mode: ${err}`);
+                this._syncingAutoSwitch = true;
+                try {
+                    item.setToggleState(!state);
+                } finally {
+                    this._syncingAutoSwitch = false;
+                }
+            });
+        });
+
+        this.menu.addMenuItem(this._autoSwitch);
+
+        // Curve Profile Selectors
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -810,7 +871,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         const container = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-section',
+            style_class: 'kuhlerprofil-section',
             x_expand: true,
         });
 
@@ -820,36 +881,33 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         });
 
         const title = new St.Label({
-            text: _('Fan Curve Profile'),
-            style_class: 'koolthing-section-title',
+            text: safeTranslate('Fan Curve Profile'),
+            style_class: 'kuhlerprofil-section-title',
             x_expand: true,
         });
         headerBox.add_child(title);
 
         this._hwCurveBadge = new St.Label({
-            text: _('Software Governor'),
-            style_class: 'koolthing-metric-label',
+            text: safeTranslate('Software Governor'),
+            style_class: 'kuhlerprofil-badge',
         });
         headerBox.add_child(this._hwCurveBadge);
         container.add_child(headerBox);
 
         const btnGroup = new St.BoxLayout({
             vertical: false,
-            style_class: 'koolthing-button-group',
+            style_class: 'kuhlerprofil-button-group',
             x_expand: true,
         });
 
-        const curveProfiles = [
-            { id: 'quiet', name: _('Quiet') },
-            { id: 'balanced', name: _('Balanced') },
-            { id: 'aggressive', name: _('Aggressive') },
-        ];
-
-        for (const cp of curveProfiles) {
+        for (const cp of CURVE_PROFILES) {
             const btn = new St.Button({
                 label: cp.name,
-                style_class: 'koolthing-mode-button',
+                style_class: 'kuhlerprofil-mode-button',
                 can_focus: true,
+                toggle_mode: true,
+                accessible_role: Atk.Role.RADIO_BUTTON,
+                accessible_name: `${cp.name} curve profile`,
                 x_expand: true,
             });
 
@@ -876,7 +934,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         const container = new St.BoxLayout({
             vertical: true,
-            style_class: 'koolthing-section',
+            style_class: 'kuhlerprofil-section',
             x_expand: true,
         });
 
@@ -886,8 +944,8 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         });
 
         const title = new St.Label({
-            text: _('Zero-RPM Cooldown'),
-            style_class: 'koolthing-section-title',
+            text: safeTranslate('Zero-RPM Cooldown'),
+            style_class: 'kuhlerprofil-section-title',
             x_expand: true,
         });
         headerBox.add_child(title);
@@ -895,15 +953,18 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         const btnGroup = new St.BoxLayout({
             vertical: false,
-            style_class: 'koolthing-button-group',
+            style_class: 'kuhlerprofil-button-group',
             x_expand: true,
         });
 
         for (const cm of COOLDOWN_MODES) {
             const btn = new St.Button({
                 label: cm.name,
-                style_class: 'koolthing-mode-button',
+                style_class: 'kuhlerprofil-mode-button',
                 can_focus: true,
+                toggle_mode: true,
+                accessible_role: Atk.Role.RADIO_BUTTON,
+                accessible_name: `${cm.name} cooldown mode`,
                 x_expand: true,
             });
 
@@ -922,48 +983,93 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this.menu.addMenuItem(item);
     }
 
-    _buildAutoGovernorSection() {
-        this._autoSwitch = new PopupMenu.PopupSwitchMenuItem(
-            _('Dynamic Auto Governor'),
-            false
-        );
-
-        this._autoSwitch.connect('toggled', (item, state) => {
-            this._client.setAutoMode(state).catch(err => {
-                console.error(`[KühlerProfil] Failed to set auto mode: ${err}`);
-                item.setToggleState(!state);
-            });
+    _buildBatteryLimitSection() {
+        const item = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
         });
 
-        this.menu.addMenuItem(this._autoSwitch);
+        const container = new St.BoxLayout({
+            vertical: true,
+            style_class: 'kuhlerprofil-section',
+            x_expand: true,
+        });
+
+        const title = new St.Label({
+            text: safeTranslate('Battery Health Charge Limit'),
+            style_class: 'kuhlerprofil-section-title',
+        });
+        container.add_child(title);
+
+        const btnGroup = new St.BoxLayout({
+            vertical: false,
+            style_class: 'kuhlerprofil-button-group',
+            x_expand: true,
+        });
+
+        for (const limit of BATTERY_LIMITS) {
+            const btn = new St.Button({
+                label: `${limit}%`,
+                style_class: 'kuhlerprofil-battery-button',
+                can_focus: true,
+                toggle_mode: true,
+                accessible_role: Atk.Role.RADIO_BUTTON,
+                accessible_name: `Battery limit ${limit}%`,
+                x_expand: true,
+            });
+
+            btn.connect('clicked', () => {
+                this._client.setBatteryLimit(limit).catch(err => {
+                    console.error(`[KühlerProfil] Failed to set battery limit ${limit}%: ${err}`);
+                });
+            });
+
+            this._batteryButtons.set(limit, btn);
+            btnGroup.add_child(btn);
+        }
+
+        container.add_child(btnGroup);
+        item.add_child(container);
+        this.menu.addMenuItem(item);
     }
 
     _buildStatusFooter() {
-        const item = new PopupMenu.PopupBaseMenuItem({
+        // Daemon connection status row
+        const statusItem = new PopupMenu.PopupBaseMenuItem({
             reactive: true,
             can_focus: true,
         });
 
         const box = new St.BoxLayout({
             vertical: false,
-            style_class: 'koolthing-status-bar',
+            style_class: 'kuhlerprofil-status-bar',
             x_expand: true,
         });
 
         this._statusLabel = new St.Label({
-            text: _('● kuhlerprofild connected'),
-            style_class: 'koolthing-status-text koolthing-status-ok',
+            text: safeTranslate('● kuhlerprofild connected'),
+            style_class: 'kuhlerprofil-status-text kuhlerprofil-status-ok',
             x_expand: true,
         });
 
         box.add_child(this._statusLabel);
-        item.add_child(box);
+        statusItem.add_child(box);
 
-        item.connect('activate', () => {
+        statusItem.connect('activate', () => {
             this._client.getStatus().catch(() => {});
         });
 
-        this.menu.addMenuItem(item);
+        this.menu.addMenuItem(statusItem);
+
+        // Preferences action button
+        this.menu.addAction(safeTranslate('Preferences…'), () => {
+            try {
+                Main.panel.closeQuickSettings();
+                this._extension.openPreferences();
+            } catch (err) {
+                console.error(`[KühlerProfil] Failed to open preferences: ${err}`);
+            }
+        });
     }
 
     _onMainToggleClicked() {
@@ -982,7 +1088,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
     _updateUI(telemetry, connected) {
         if (!connected || !telemetry) {
-            this.subtitle = _('Daemon Disconnected');
+            this.subtitle = safeTranslate('Daemon Disconnected');
             this.checked = false;
             this.iconName = 'power-profile-balanced-symbolic';
             if (this._statusIndicator) {
@@ -990,8 +1096,8 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             }
 
             if (this._statusLabel) {
-                this._statusLabel.text = _('⚠ Daemon offline (Click to retry)');
-                this._statusLabel.style_class = 'koolthing-status-text koolthing-status-warn';
+                this._statusLabel.text = safeTranslate('⚠ Daemon offline (Click to retry)');
+                this._statusLabel.style_class = 'kuhlerprofil-status-text kuhlerprofil-status-warn';
             }
             return;
         }
@@ -1006,17 +1112,34 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         const tempText = telemetry.cpuTemp > 0 ? `${Math.round(telemetry.cpuTemp)}°C` : '--°C';
         const rpmText = telemetry.fan1Rpm > 0 ? `${telemetry.fan1Rpm} RPM` : '0 RPM';
         const curveName = telemetry.activeCurve ? (telemetry.activeCurve.charAt(0).toUpperCase() + telemetry.activeCurve.slice(1)) : 'Balanced';
-        this.subtitle = telemetry.autoMode 
+        this.subtitle = telemetry.autoMode
             ? `${modeInfo.name} · ${tempText} · ${rpmText} [${curveName}]`
             : `${modeInfo.name} · ${tempText} · ${rpmText}`;
         this.checked = telemetry.autoMode || telemetry.activeMode === 'boost';
 
-        // Update Telemetry Card values
+        // Update Telemetry Card values with dynamic temperature styling
         if (this._tempValue) {
             this._tempValue.text = telemetry.cpuTemp > 0 ? `${telemetry.cpuTemp.toFixed(1)} °C` : '-- °C';
+            this._tempValue.remove_style_class_name('kuhlerprofil-temp-cool');
+            this._tempValue.remove_style_class_name('kuhlerprofil-temp-normal');
+            this._tempValue.remove_style_class_name('kuhlerprofil-temp-warm');
+            this._tempValue.remove_style_class_name('kuhlerprofil-temp-hot');
+
+            if (telemetry.cpuTemp > 0) {
+                if (telemetry.cpuTemp < 50) {
+                    this._tempValue.add_style_class_name('kuhlerprofil-temp-cool');
+                } else if (telemetry.cpuTemp < 65) {
+                    this._tempValue.add_style_class_name('kuhlerprofil-temp-normal');
+                } else if (telemetry.cpuTemp < 75) {
+                    this._tempValue.add_style_class_name('kuhlerprofil-temp-warm');
+                } else {
+                    this._tempValue.add_style_class_name('kuhlerprofil-temp-hot');
+                }
+            }
         }
+
         if (this._batValue) {
-            const acStatus = telemetry.onAC ? _('AC Plugged') : _('Battery');
+            const acStatus = telemetry.onAC ? safeTranslate('AC Plugged') : safeTranslate('Battery');
             this._batValue.text = `${telemetry.batteryPercent}% (${acStatus})`;
         }
         if (this._fan1Value) {
@@ -1028,55 +1151,80 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         // Update Thermal Mode Button active styles
         for (const [modeId, btn] of this._modeButtons.entries()) {
-            if (modeId === telemetry.activeMode) {
+            const isSelected = (modeId === telemetry.activeMode);
+            btn.checked = isSelected;
+            if (isSelected) {
+                btn.add_style_class_name('kuhlerprofil-button-active');
                 btn.add_style_class_name('koolthing-button-active');
             } else {
+                btn.remove_style_class_name('kuhlerprofil-button-active');
                 btn.remove_style_class_name('koolthing-button-active');
             }
         }
 
         // Update Battery Limit Button active styles
         for (const [limitVal, btn] of this._batteryButtons.entries()) {
-            if (limitVal === telemetry.batteryLimit) {
+            const isSelected = (limitVal === telemetry.batteryLimit);
+            btn.checked = isSelected;
+            if (isSelected) {
+                btn.add_style_class_name('kuhlerprofil-button-active');
                 btn.add_style_class_name('koolthing-button-active');
             } else {
+                btn.remove_style_class_name('kuhlerprofil-button-active');
                 btn.remove_style_class_name('koolthing-button-active');
             }
         }
 
         // Update Curve Profile Button active styles
         for (const [curveId, btn] of this._curveButtons.entries()) {
-            if (curveId === telemetry.activeCurve) {
+            const isSelected = (curveId === telemetry.activeCurve);
+            btn.checked = isSelected;
+            if (isSelected) {
+                btn.add_style_class_name('kuhlerprofil-button-active');
                 btn.add_style_class_name('koolthing-button-active');
             } else {
+                btn.remove_style_class_name('kuhlerprofil-button-active');
                 btn.remove_style_class_name('koolthing-button-active');
             }
         }
 
         // Update Cooldown Mode Button active styles
         for (const [cooldownId, btn] of this._cooldownButtons.entries()) {
-            if (cooldownId === telemetry.cooldownMode) {
+            const isSelected = (cooldownId === telemetry.cooldownMode);
+            btn.checked = isSelected;
+            if (isSelected) {
+                btn.add_style_class_name('kuhlerprofil-button-active');
                 btn.add_style_class_name('koolthing-button-active');
             } else {
+                btn.remove_style_class_name('kuhlerprofil-button-active');
                 btn.remove_style_class_name('koolthing-button-active');
             }
         }
 
         // Update Hardware Curve Badge
         if (this._hwCurveBadge) {
-            this._hwCurveBadge.text = telemetry.hasHardwareCurve ? _('ASUS ACPI HW') : _('Software Governor');
+            this._hwCurveBadge.text = telemetry.hasHardwareCurve
+                ? safeTranslate('ASUS ACPI HW')
+                : safeTranslate('Software Governor');
         }
 
-        // Update Auto Governor Switch
+        // Update Auto Governor Switch (guarded against feedback loop)
         if (this._autoSwitch && this._autoSwitch.state !== telemetry.autoMode) {
-            this._autoSwitch.setToggleState(telemetry.autoMode);
+            this._syncingAutoSwitch = true;
+            try {
+                this._autoSwitch.setToggleState(telemetry.autoMode);
+            } finally {
+                this._syncingAutoSwitch = false;
+            }
         }
 
         // Update Footer Status
         if (this._statusLabel) {
-            const govStatus = telemetry.autoMode ? _('Auto Governor Active') : _('Manual Profile');
+            const govStatus = telemetry.autoMode
+                ? safeTranslate('Auto Governor Active')
+                : safeTranslate('Manual Profile');
             this._statusLabel.text = `● kuhlerprofild connected (${govStatus})`;
-            this._statusLabel.style_class = 'koolthing-status-text koolthing-status-ok';
+            this._statusLabel.style_class = 'kuhlerprofil-status-text kuhlerprofil-status-ok';
         }
     }
 
@@ -1089,6 +1237,9 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._batteryButtons.clear();
         this._curveButtons.clear();
         this._cooldownButtons.clear();
+        if (this.menu) {
+            this.menu.destroy();
+        }
         super.destroy();
     }
 });
@@ -1110,6 +1261,9 @@ class KuhlerProfilIndicator extends QuickSettings.SystemIndicator {
         this._indicator.visible = true;
 
         this._toggle = new KuhlerProfilToggle(extension, client, this._indicator);
+        this._toggle.bind_property('icon-name',
+            this._indicator, 'icon-name',
+            GObject.BindingFlags.SYNC_CREATE);
         this.quickSettingsItems.push(this._toggle);
     }
 
@@ -1118,6 +1272,7 @@ class KuhlerProfilIndicator extends QuickSettings.SystemIndicator {
             this._toggle.destroy();
             this._toggle = null;
         }
+        this.quickSettingsItems = [];
         super.destroy();
     }
 });
@@ -1129,6 +1284,7 @@ export const KoolThingIndicator = KuhlerProfilIndicator;
  */
 export default class KuhlerProfilExtension extends Extension {
     enable() {
+        this.initTranslations();
         this._client = new KuhlerProfilDBusClient();
         this._indicator = new KuhlerProfilIndicator(this, this._client);
 
@@ -1142,7 +1298,6 @@ export default class KuhlerProfilExtension extends Extension {
             this._client = null;
         }
         if (this._indicator) {
-            this._indicator.quickSettingsItems.forEach(item => item.destroy());
             this._indicator.destroy();
             this._indicator = null;
         }

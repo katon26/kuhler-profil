@@ -1,64 +1,89 @@
-/* KoolThing GNOME Shell Extension Stylesheet */
+/* KühlerProfil GNOME Shell Quick Settings Extension Stylesheet */
+/* Compatible with GNOME Shell 45, 46, 47, 48, 49, 50 */
 
-.koolthing-menu-container {
-    padding: 6px 4px;
-    spacing: 10px;
-}
-
+/* Container & Sections */
+.kuhlerprofil-section,
 .koolthing-section {
     margin: 4px 6px;
     spacing: 6px;
 }
 
+.kuhlerprofil-section-title,
 .koolthing-section-title {
-    font-size: 0.75em;
+    font-size: 0.76em;
     font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: rgba(255, 255, 255, 0.55);
     margin-bottom: 2px;
 }
 
-/* Telemetry Dashboard Grid */
+/* Telemetry Dashboard */
+.kuhlerprofil-telemetry-grid,
 .koolthing-telemetry-grid {
     spacing: 6px;
     margin: 4px 6px;
 }
 
+.kuhlerprofil-telemetry-row,
 .koolthing-telemetry-row {
     spacing: 6px;
 }
 
+.kuhlerprofil-metric-card,
 .koolthing-metric-card {
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: 8px;
     padding: 6px 10px;
-    spacing: 6px;
+    spacing: 4px;
 }
 
+.kuhlerprofil-metric-label,
 .koolthing-metric-label {
-    font-size: 0.8em;
+    font-size: 0.78em;
     color: rgba(255, 255, 255, 0.6);
 }
 
+.kuhlerprofil-metric-value,
 .koolthing-metric-value {
     font-size: 0.95em;
     font-weight: 600;
     color: #ffffff;
 }
 
-/* Button Groups for Thermal Modes and Battery Limits */
+/* Dynamic Temperature Badges */
+.kuhlerprofil-temp-cool {
+    color: #33d17a;
+}
+
+.kuhlerprofil-temp-normal {
+    color: #3584e4;
+    color: -st-accent-color;
+}
+
+.kuhlerprofil-temp-warm {
+    color: #f6d32d;
+}
+
+.kuhlerprofil-temp-hot {
+    color: #e01b24;
+}
+
+/* Button Groups for Thermal Modes, Curves, Cooldown, and Battery Limits */
+.kuhlerprofil-button-group,
 .koolthing-button-group {
     spacing: 6px;
     margin: 2px 0px;
 }
 
+.kuhlerprofil-mode-button,
 .koolthing-mode-button,
+.kuhlerprofil-battery-button,
 .koolthing-battery-button {
     background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 8px 10px;
     font-size: 0.85em;
     font-weight: 500;
     color: #f0f0f0;
@@ -66,56 +91,91 @@
     transition-duration: 150ms;
 }
 
+.kuhlerprofil-mode-button:hover,
 .koolthing-mode-button:hover,
+.kuhlerprofil-battery-button:hover,
 .koolthing-battery-button:hover {
-    background-color: rgba(255, 255, 255, 0.14);
+    background-color: rgba(255, 255, 255, 0.15);
     color: #ffffff;
 }
 
+.kuhlerprofil-mode-button:active,
 .koolthing-mode-button:active,
+.kuhlerprofil-battery-button:active,
 .koolthing-battery-button:active {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.22);
 }
 
+.kuhlerprofil-mode-button:focus,
+.koolthing-mode-button:focus,
+.kuhlerprofil-battery-button:focus,
+.koolthing-battery-button:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.45);
+    outline: 2px solid -st-accent-color;
+}
+
+/* Active and Checked Button States (HIG Accent Color Compliant) */
+.kuhlerprofil-mode-button:checked,
+.koolthing-mode-button:checked,
+.kuhlerprofil-battery-button:checked,
+.koolthing-battery-button:checked,
+.kuhlerprofil-button-active,
 .koolthing-button-active {
-    background-color: #3584e4 !important;
-    border-color: #3584e4 !important;
-    color: #ffffff !important;
-    font-weight: 700 !important;
+    background-color: #3584e4;
+    background-color: -st-accent-color;
+    border-color: #3584e4;
+    border-color: -st-accent-color;
+    color: #ffffff;
+    color: -st-accent-fg-color;
+    font-weight: 700;
 }
 
+.kuhlerprofil-mode-button:checked:hover,
+.koolthing-mode-button:checked:hover,
+.kuhlerprofil-battery-button:checked:hover,
+.koolthing-battery-button:checked:hover,
+.kuhlerprofil-button-active:hover,
 .koolthing-button-active:hover {
-    background-color: #4a90e2 !important;
+    background-color: #4a90e2;
+    background-color: -st-accent-color;
+    border-color: #4a90e2;
+    border-color: -st-accent-color;
 }
 
-/* Auto Governor Item */
-.koolthing-governor-desc {
-    font-size: 0.78em;
-    color: rgba(255, 255, 255, 0.5);
-    margin-left: 12px;
-    margin-top: -4px;
-    margin-bottom: 6px;
+/* Badges */
+.kuhlerprofil-badge {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 0.72em;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.75);
 }
 
-/* Daemon Status Line */
+/* Daemon Status Line & Footer */
+.kuhlerprofil-status-bar,
 .koolthing-status-bar {
     margin: 6px 8px 2px 8px;
     spacing: 6px;
 }
 
+.kuhlerprofil-status-text,
 .koolthing-status-text {
-    font-size: 0.75em;
-    color: rgba(255, 255, 255, 0.45);
+    font-size: 0.76em;
+    color: rgba(255, 255, 255, 0.55);
 }
 
+.kuhlerprofil-status-ok,
 .koolthing-status-ok {
-    color: #57e389;
+    color: #33d17a;
 }
 
+.kuhlerprofil-status-warn,
 .koolthing-status-warn {
     color: #f6d32d;
 }
 
+.kuhlerprofil-status-error,
 .koolthing-status-error {
-    color: #ed333b;
+    color: #e01b24;
 }
