@@ -60,6 +60,7 @@ func NewModel(client *dbusapi.DBusClient) Model {
 		OnAC:           true,
 		ActiveMode:     models.ModeStandard,
 		AutoMode:       false,
+		CooldownMode:   models.CooldownKick,
 	}
 
 	return Model{
@@ -198,6 +199,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "c", "C":
+			nextMode := nextCooldownMode(m.telemetry.CooldownMode)
+			m.telemetry.CooldownMode = nextMode
+			m.statusMsg = fmt.Sprintf("Cooldown mode: %s (%s)", nextMode, cooldownDesc(nextMode))
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			if m.client != nil {
+				return m, setCooldownModeCmd(m.client, string(nextMode))
+			}
+			return m, nil
+
 		case "r", "R":
 			m.statusMsg = "Refreshing telemetry..."
 			m.statusMsgExpiry = time.Now().Add(1 * time.Second)
@@ -333,3 +344,40 @@ func nextBatteryLimit(current int32) int32 {
 		return 80
 	}
 }
+
+func nextCooldownMode(current models.CooldownMode) models.CooldownMode {
+	switch current {
+	case models.CooldownKick:
+		return models.CooldownDecay
+	case models.CooldownDecay:
+		return models.CooldownOff
+	default:
+		return models.CooldownKick
+	}
+}
+
+func cooldownDesc(mode models.CooldownMode) string {
+	switch mode {
+	case models.CooldownKick:
+		return "Thermal Policy Kick"
+	case models.CooldownDecay:
+		return "Cooldown Decay"
+	case models.CooldownOff:
+		return "Factory Default"
+	default:
+		return "Thermal Policy Kick"
+	}
+}
+
+func setCooldownModeCmd(client *dbusapi.DBusClient, mode string) tea.Cmd {
+	return func() tea.Msg {
+		if client == nil {
+			return nil
+		}
+		if err := client.SetCooldownMode(mode); err != nil {
+			return ErrMsg(fmt.Errorf("failed to set cooldown mode: %w", err))
+		}
+		return nil
+	}
+}
+

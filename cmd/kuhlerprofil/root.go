@@ -83,6 +83,7 @@ func NewRootCmd(opts Options) *cobra.Command {
   %[1]s mode boost
   %[1]s battery 80
   %[1]s auto on
+  %[1]s cooldown kick
   %[1]s tui`, binName),
 		Version:       Version,
 		SilenceUsage:  true,

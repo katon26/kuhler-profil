@@ -103,13 +103,22 @@ func RenderDashboard(status models.Telemetry, width int, height int) string {
 		autoGovBadge = AutoGovernorOff.Render(fmt.Sprintf("○ GOVERNOR OFF (%s)", profFormatted))
 	}
 
+	cdMode := status.CooldownMode
+	if cdMode == "" {
+		cdMode = models.CooldownKick
+	}
+	cdBadge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39")).
+		Bold(true).
+		Render(fmt.Sprintf("❄ COOLDOWN: %s", strings.ToUpper(string(cdMode))))
+
 	modeContent := lipgloss.JoinVertical(
 		lipgloss.Left,
 		modeTitle,
 		"",
 		pillsRow,
 		"",
-		autoGovBadge,
+		lipgloss.JoinHorizontal(lipgloss.Center, autoGovBadge, "  ", cdBadge),
 	)
 	modeCard := CardStyle.Width(cardWidth).Render(modeContent)
 
@@ -133,11 +142,12 @@ func RenderDashboard(status models.Telemetry, width int, height int) string {
 	k1 := HelpKeyStyle.Render("[1]") + HelpDescStyle.Render(" Silent")
 	k2 := HelpKeyStyle.Render("[2]") + HelpDescStyle.Render(" Standard")
 	k3 := HelpKeyStyle.Render("[3]") + HelpDescStyle.Render(" Boost")
-	kb := HelpKeyStyle.Render("[b]") + HelpDescStyle.Render(" Cycle Bat Limit")
-	ka := HelpKeyStyle.Render("[a]") + HelpDescStyle.Render(" Toggle Auto")
+	kb := HelpKeyStyle.Render("[b]") + HelpDescStyle.Render(" Bat Limit")
+	ka := HelpKeyStyle.Render("[a]") + HelpDescStyle.Render(" Auto")
+	kc := HelpKeyStyle.Render("[c]") + HelpDescStyle.Render(" Cooldown")
 	kq := HelpKeyStyle.Render("[q]") + HelpDescStyle.Render(" Quit")
 
-	helpItems := []string{k1, k2, k3, kb, ka, kq}
+	helpItems := []string{k1, k2, k3, kb, ka, kc, kq}
 	helpRow := strings.Join(helpItems, HelpDivider.String())
 	footer := HelpBarStyle.Render(helpRow)
 

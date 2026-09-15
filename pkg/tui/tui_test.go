@@ -211,6 +211,9 @@ func TestRenderDashboard(t *testing.T) {
 	if !strings.Contains(view, "80%") {
 		t.Errorf("RenderDashboard missing Battery percent '80%%'")
 	}
+	if !strings.Contains(view, "COOLDOWN") {
+		t.Errorf("RenderDashboard missing Cooldown indicator 'COOLDOWN'")
+	}
 
 	// Compact / Narrow terminal
 	compactView := tui.RenderDashboard(status, 50, 20)
@@ -279,6 +282,9 @@ func TestModelLifecycleAndKeybindings(t *testing.T) {
 	// Test Auto Mode key 'a'
 	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
 
+	// Test Cooldown Mode key 'c'
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
 	// Test Refresh key 'r'
 	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 
@@ -334,6 +340,8 @@ func TestModelWithMockDBusClient(t *testing.T) {
 				return &dbus.Call{Err: nil}
 			case dbusapi.Interface + ".SetAutoMode":
 				return &dbus.Call{Err: nil}
+			case dbusapi.Interface + ".SetCooldownMode":
+				return &dbus.Call{Err: nil}
 			default:
 				return &dbus.Call{Err: nil}
 			}
@@ -379,6 +387,16 @@ func TestModelWithMockDBusClient(t *testing.T) {
 	msg = setCmd()
 	if _, ok := msg.(tui.StatusMsg); !ok {
 		t.Errorf("setAutoModeCmd returned %T; want StatusMsg", msg)
+	}
+
+	// Test Cooldown mode key with client attached
+	model, setCmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	if setCmd == nil {
+		t.Errorf("model.Update('c') with client did not return cmd")
+	}
+	msg = setCmd()
+	if msg != nil {
+		t.Errorf("setCooldownModeCmd returned %v; want nil on success", msg)
 	}
 
 	// Test Refresh key with client attached
