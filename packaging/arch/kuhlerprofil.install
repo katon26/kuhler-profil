@@ -1,0 +1,21 @@
+post_install() {
+    echo ":: Reloading systemd and D-Bus..."
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl reload dbus >/dev/null 2>&1 || true
+    echo ":: Enable KühlerProfil daemon with: systemctl enable --now kuhlerprofil.service"
+}
+
+post_upgrade() {
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl try-restart kuhlerprofil.service >/dev/null 2>&1 || true
+}
+
+pre_remove() {
+    systemctl stop kuhlerprofil.service >/dev/null 2>&1 || true
+    systemctl disable kuhlerprofil.service >/dev/null 2>&1 || true
+}
+
+post_remove() {
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl reload dbus >/dev/null 2>&1 || true
+}

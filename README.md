@@ -171,7 +171,7 @@ sudo pacman -S go make
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/asus-linux/kuhler-profil.git
+git clone https://github.com/katon26/kuhler-profil.git
 cd kuhler-profil
 
 # 2. Compile both binaries (CLI & Daemon)
@@ -198,15 +198,42 @@ kuhlerprofil status
 
 ### Install GNOME Shell Extension
 
-To install the KühlerProfil Quick Settings menu for GNOME 45, 46, 47, 48+:
+To install the KühlerProfil Quick Settings menu for GNOME 45, 46, 47, 48, 49, 50:
 
 ```bash
 # Install extension to ~/.local/share/gnome-shell/extensions/
 make install-extension
 
 # If running Wayland, log out and log back in, or enable directly:
-gnome-extensions enable kuhlerprofil@asus-linux.org
+gnome-extensions enable kuhlerprofil@katon26.github.io
 ```
+
+---
+
+### Linux Packaging & Distribution
+
+Pre-built distribution packages can be generated directly using the build automation suite:
+
+```bash
+# Build Debian/Ubuntu (.deb) binary package
+make package-deb
+
+# Build Fedora/RHEL (.rpm) spec and archive
+make package-rpm
+
+# Build and validate Arch Linux (PKGBUILD) package
+make package-arch
+
+# Build all packages simultaneously (including GNOME Shell ZIP)
+make package-all
+```
+
+Generated packages are placed into the `dist/` directory:
+- Debian / Ubuntu: `dist/kuhlerprofil_0.1.0_amd64.deb` (`sudo dpkg -i dist/kuhlerprofil_0.1.0_amd64.deb`)
+- Fedora / RHEL: `packaging/rpm/kuhlerprofil.spec`
+- Arch Linux: `packaging/arch/PKGBUILD` (`cd packaging/arch && makepkg -si`)
+- GNOME Shell Extension: `dist/kuhlerprofil@katon26.github.io.shell-extension.zip`
+
 
 ---
 
@@ -529,6 +556,8 @@ Contributions are welcome! KühlerProfil is an open-source project designed for 
 
 ### Areas for Contribution:
 - [x] Custom multi-point RPM fan curve profiles (Dual-Path ACPI & Software Governor)
+- [x] Zero-RPM cooldown recovery governor (Instant Reset / Cooldown Decay)
+- [x] Packaging & Distribution: Add .deb, .rpm, or Arch Linux PKGBUILD scripts to prepare for publishing
 - [ ] ROG keyboard RGB backlight integration (`asus::kbd_backlight`)
 - [ ] Waybar & Polybar native integration scripts
 - [ ] KDE Plasma 6 Quick Settings Widget

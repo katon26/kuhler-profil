@@ -1,0 +1,17 @@
+Package: kuhlerprofil
+Version: 0.1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Katon <katonadams.f@gmail.com>
+Depends: dbus, systemd
+Homepage: https://github.com/katon26/kuhler-profil
+Description: ASUS Linux thermal profile governor, fan curves, and battery health guardian
+ KühlerProfil is a native Linux background daemon, CLI, and GNOME Shell
+ extension for ASUS VivoBook, ZenBook, TUF, and ROG laptops.
+ Features:
+  * ASUS ACPI thermal profile control (Silent, Standard, Boost)
+  * Multi-point RPM fan curve programming and intelligent auto-governor
+  * Zero-RPM cooldown recovery governor (Instant Reset / Cooldown Decay)
+  * Battery health charging limiter (60%, 80%, 100%)
+  * Interactive TUI dashboard and GNOME Shell Quick Settings menu

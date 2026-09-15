@@ -17,7 +17,7 @@ CLI_BIN := $(BIN_DIR)/kuhlerprofil
 ALIAS_BIN := $(BIN_DIR)/kp
 ALIAS_KUHLER_BIN := $(BIN_DIR)/kuhler
 
-.PHONY: all build daemon cli test test-race test-extension test-all fmt vet install install-daemon install-cli install-extension extension-install extension-pack uninstall uninstall-extension clean dry-run help
+.PHONY: all build daemon cli test test-race test-extension test-all fmt vet install install-daemon install-cli install-extension extension-install extension-pack package-deb package-rpm package-arch package-all uninstall uninstall-extension clean dry-run help
 
 all: build
 
@@ -35,6 +35,10 @@ help:
 	@echo "  make install-cli       Install only kuhlerprofil CLI to /usr/local/bin (requires sudo)"
 	@echo "  make install-extension Install GNOME Shell 45+ Quick Settings extension to user directory"
 	@echo "  make extension-pack    Package extension into distributable ZIP archive"
+	@echo "  make package-deb       Build Debian/Ubuntu .deb binary package"
+	@echo "  make package-rpm       Prepare RPM package spec and source archive"
+	@echo "  make package-arch      Validate and build Arch Linux package using PKGBUILD"
+	@echo "  make package-all       Build distribution packages for Debian, RPM, Arch, and GNOME"
 	@echo "  make uninstall         Remove binaries, systemd unit, and D-Bus policy"
 	@echo "  make clean             Remove built binaries and packaging artifacts"
 
@@ -103,6 +107,18 @@ extension-install: install-extension
 extension-pack:
 	./extension/install.sh pack
 
+package-deb:
+	./packaging/build-deb.sh
+
+package-rpm:
+	./packaging/build-rpm.sh
+
+package-arch:
+	./packaging/build-arch.sh
+
+package-all:
+	./packaging/build-all.sh
+
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/kuhlerprofild
 	rm -f $(DESTDIR)$(BINDIR)/kuhlerprofil
@@ -116,6 +132,6 @@ uninstall-extension:
 	./extension/install.sh uninstall
 
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR) dist
 	rm -f *.shell-extension.zip *.zip extension/*.zip extension/*.shell-extension.zip
 	@echo "Cleaned build artifacts."

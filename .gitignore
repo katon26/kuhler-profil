@@ -26,9 +26,13 @@ id_ed25519
 # 3. Build Outputs & Packages
 # ==========================================
 bin/
+dist/
 *.out
 *.zip
 *.shell-extension.zip
+*.deb
+*.rpm
+*.pkg.tar.*
 
 # ==========================================
 # 4. System Caches & OS Artifacts
