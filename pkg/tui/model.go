@@ -45,6 +45,7 @@ type Model struct {
 	err             error
 	connected       bool
 	quitting        bool
+	themeIndex      int
 	sigChan         <-chan models.Telemetry
 	sigCleanup      func()
 }
@@ -75,8 +76,9 @@ func NewModel(client *dbusapi.DBusClient) Model {
 // NewTUI initializes and returns a Bubbletea Program with alternate screen and mouse cell mode.
 func NewTUI(client *dbusapi.DBusClient) *tea.Program {
 	m := NewModel(client)
-	return tea.NewProgram(m, tea.WithAltScreen())
+	return tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 }
+
 
 // Init starts periodic telemetry polling and signal subscriptions.
 func (m Model) Init() tea.Cmd {
@@ -217,6 +219,90 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+
+	case tea.MouseMsg:
+		isLeftClick := (msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress) || msg.Type == tea.MouseLeft
+		if !isLeftClick {
+			return m, nil
+		}
+
+		target := DetectClickTarget(msg.X, msg.Y, m.width, m.height, m.telemetry.Fan2RPM > 0)
+		switch target {
+		case TargetLogo:
+			m.themeIndex = (m.themeIndex + 1) % len(AvailableThemes)
+			themeName := AvailableThemes[m.themeIndex].Name
+			m.statusMsg = fmt.Sprintf("Theme: %s", themeName)
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			return m, nil
+
+		case TargetSilent:
+			m.telemetry.ActiveMode = models.ModeSilent
+			m.statusMsg = "Switched to Silent mode"
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			if m.client != nil {
+				return m, setThermalModeCmd(m.client, models.ModeSilent)
+			}
+			return m, nil
+
+		case TargetStandard:
+			m.telemetry.ActiveMode = models.ModeStandard
+			m.statusMsg = "Switched to Standard mode"
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			if m.client != nil {
+				return m, setThermalModeCmd(m.client, models.ModeStandard)
+			}
+			return m, nil
+
+		case TargetBoost:
+			m.telemetry.ActiveMode = models.ModeBoost
+			m.statusMsg = "Switched to Boost mode"
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			if m.client != nil {
+				return m, setThermalModeCmd(m.client, models.ModeBoost)
+			}
+			return m, nil
+
+		case TargetBattery:
+			nextLimit := nextBatteryLimit(m.telemetry.BatteryLimit)
+			m.telemetry.BatteryLimit = nextLimit
+			m.statusMsg = fmt.Sprintf("Battery limit set to %d%%", nextLimit)
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			if m.client != nil {
+				return m, setBatteryLimitCmd(m.client, nextLimit)
+			}
+			return m, nil
+
+		case TargetGovernor:
+			m.telemetry.AutoMode = !m.telemetry.AutoMode
+			stateStr := "ENABLED"
+			if !m.telemetry.AutoMode {
+				stateStr = "DISABLED"
+			}
+			m.statusMsg = fmt.Sprintf("Auto-curve governor %s", stateStr)
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			if m.client != nil {
+				return m, setAutoModeCmd(m.client, m.telemetry.AutoMode)
+			}
+			return m, nil
+
+		case TargetCooldown:
+			nextMode := nextCooldownMode(m.telemetry.CooldownMode)
+			m.telemetry.CooldownMode = nextMode
+			m.statusMsg = fmt.Sprintf("Cooldown mode: %s (%s)", nextMode, cooldownDesc(nextMode))
+			m.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			if m.client != nil {
+				return m, setCooldownModeCmd(m.client, string(nextMode))
+			}
+			return m, nil
+
+		case TargetRefresh:
+			m.statusMsg = "Refreshing telemetry..."
+			m.statusMsgExpiry = time.Now().Add(1 * time.Second)
+			if m.client != nil {
+				return m, fetchTelemetryCmd(m.client)
+			}
+			return m, nil
+		}
 	}
 
 	return m, nil
@@ -228,7 +314,8 @@ func (m Model) View() string {
 		return "Exiting KühlerProfil TUI. Goodbye!\n"
 	}
 
-	dashboard := RenderDashboard(m.telemetry, m.width, m.height)
+	dashboard := RenderDashboardWithTheme(m.telemetry, m.width, m.height, m.themeIndex)
+
 
 	if len(m.statusMsg) > 0 {
 		var toast string

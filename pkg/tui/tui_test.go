@@ -446,3 +446,149 @@ func TestLogoBanner(t *testing.T) {
 	})
 }
 
+func TestThemePalettes(t *testing.T) {
+	if len(tui.AvailableThemes) < 3 {
+		t.Fatalf("expected at least 3 themes, got %d", len(tui.AvailableThemes))
+	}
+	for i, theme := range tui.AvailableThemes {
+		banner := tui.LogoBannerWithTheme(false, i)
+		if !strings.Contains(banner, "KÜHLERPROFIL") {
+			t.Errorf("theme %s banner missing KÜHLERPROFIL", theme.Name)
+		}
+	}
+}
+
+func TestModelMouseInteraction(t *testing.T) {
+	var model tea.Model = tui.NewModel(nil)
+	model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+
+
+	// 1. Mouse click on Logo cycles theme
+	clickLogo := tea.MouseMsg{
+		X:      10,
+		Y:      1,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickLogo)
+	view := model.View()
+	if !strings.Contains(view, "Theme: Cyberpunk Violet") {
+		t.Errorf("clicking logo did not switch to theme Cyberpunk Violet: %s", view)
+	}
+
+	// 2. Mouse click on Silent mode pill
+	clickSilent := tea.MouseMsg{
+		X:      44,
+		Y:      13,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickSilent)
+	view = model.View()
+	if !strings.Contains(view, "Switched to Silent mode") {
+		t.Errorf("clicking Silent pill did not switch mode: %s", view)
+	}
+
+	// 3. Mouse click on Standard mode pill
+	clickStd := tea.MouseMsg{
+		X:      55,
+		Y:      13,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickStd)
+	view = model.View()
+	if !strings.Contains(view, "Switched to Standard mode") {
+		t.Errorf("clicking Standard pill did not switch mode: %s", view)
+	}
+
+	// 4. Mouse click on Boost mode pill
+	clickBoost := tea.MouseMsg{
+		X:      70,
+		Y:      13,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickBoost)
+	view = model.View()
+	if !strings.Contains(view, "Switched to Boost mode") {
+		t.Errorf("clicking Boost pill did not switch mode: %s", view)
+	}
+
+	// 5. Mouse click on Battery card cycles limit
+	clickBattery := tea.MouseMsg{
+		X:      15,
+		Y:      12,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickBattery)
+	view = model.View()
+	if !strings.Contains(view, "Battery limit set to 100%") {
+		t.Errorf("clicking battery card did not cycle to 100%%: %s", view)
+	}
+
+	// 6. Mouse click on Governor badge toggles governor
+	clickGov := tea.MouseMsg{
+		X:      46,
+		Y:      15,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickGov)
+	view = model.View()
+	if !strings.Contains(view, "Auto-curve governor ENABLED") {
+		t.Errorf("clicking governor badge did not enable governor: %s", view)
+	}
+
+	// 7. Mouse click on Cooldown badge activates cooldown
+	clickCD := tea.MouseMsg{
+		X:      68,
+		Y:      15,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickCD)
+	view = model.View()
+	if !strings.Contains(view, "Cooldown mode:") {
+		t.Errorf("clicking cooldown badge did not trigger cooldown: %s", view)
+	}
+
+	// 8. Mouse click on Thermal card refreshes telemetry
+	clickRefresh := tea.MouseMsg{
+		X:      10,
+		Y:      5,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(clickRefresh)
+	view = model.View()
+	if !strings.Contains(view, "Refreshing telemetry...") {
+		t.Errorf("clicking thermal card did not refresh telemetry: %s", view)
+	}
+
+	// 9. Right click or Mouse Motion is ignored
+	rightClick := tea.MouseMsg{
+		X:      10,
+		Y:      1,
+		Button: tea.MouseButtonRight,
+		Action: tea.MouseActionPress,
+	}
+	model, _ = model.Update(rightClick)
+
+	mouseMotion := tea.MouseMsg{
+		X:      10,
+		Y:      1,
+		Action: tea.MouseActionMotion,
+	}
+	model, _ = model.Update(mouseMotion)
+
+	// 10. Verify Keyboard shortcuts still work identically
+	model, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	if !strings.Contains(model.View(), "Switched to Silent mode") {
+		t.Errorf("key '1' failed after mouse events")
+	}
+}
+
+
+

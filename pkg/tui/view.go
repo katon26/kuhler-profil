@@ -9,8 +9,13 @@ import (
 	"kuhlerprofil/pkg/models"
 )
 
-// RenderDashboard renders the entire KühlerProfil terminal dashboard.
+// RenderDashboard renders the entire KühlerProfil terminal dashboard with the default theme.
 func RenderDashboard(status models.Telemetry, width int, height int) string {
+	return RenderDashboardWithTheme(status, width, height, 0)
+}
+
+// RenderDashboardWithTheme renders the KühlerProfil terminal dashboard with a specific theme.
+func RenderDashboardWithTheme(status models.Telemetry, width int, height int, themeIndex int) string {
 	if width <= 0 {
 		width = 80
 	}
@@ -26,15 +31,16 @@ func RenderDashboard(status models.Telemetry, width int, height int) string {
 	if isCompact {
 		header = lipgloss.JoinVertical(
 			lipgloss.Left,
-			LogoBanner(true),
+			LogoBannerWithTheme(true, themeIndex),
 			SubtitleStyle.Render(headerTitle),
 			"",
 		)
 	} else {
-		logo := LogoBanner(false)
+		logo := LogoBannerWithTheme(false, themeIndex)
 		sub := SubtitleStyle.Render(headerTitle)
 		header = lipgloss.JoinVertical(lipgloss.Left, logo, sub, "")
 	}
+
 
 	// 2. Panels
 	cardWidth := width - 4

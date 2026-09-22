@@ -182,15 +182,41 @@ func ModePill(mode models.ThermalMode, activeMode models.ThermalMode) string {
 	}
 }
 
-// LogoBanner returns the ASCII art banner with styling.
-func LogoBanner(compact bool) string {
+// Theme defines a color theme for the TUI dashboard header.
+type Theme struct {
+	Name  string
+	Color lipgloss.Color
+}
+
+// AvailableThemes provides the color themes available for cycling.
+var AvailableThemes = []Theme{
+	{Name: "Electric Cyan", Color: ColorCyan},
+	{Name: "Cyberpunk Violet", Color: ColorViolet},
+	{Name: "Emerald Green", Color: ColorEmerald},
+	{Name: "Crimson Red", Color: ColorCrimson},
+	{Name: "Amber Gold", Color: ColorAmber},
+}
+
+// LogoBannerWithTheme returns the styled ASCII art banner for a specific theme index.
+func LogoBannerWithTheme(compact bool, themeIndex int) string {
+	if themeIndex < 0 || themeIndex >= len(AvailableThemes) {
+		themeIndex = 0
+	}
+	style := lipgloss.NewStyle().Bold(true).Foreground(AvailableThemes[themeIndex].Color)
+
 	if compact {
-		return BannerStyle.Render("⚡ KÜHLERPROFIL") + " " + SubtitleStyle.Render(":: ASUS Control Suite")
+		return style.Render("⚡ KÜHLERPROFIL") + " " + SubtitleStyle.Render(":: ASUS Control Suite")
 	}
 
 	rawLogo := `█▄▀ █ █ █ █ █   █▀▀ █▀█   █▀█ █▀█ █▀█ █▀▀ ▀█▀ █     KÜHLERPROFIL
 █ █ █▄█ █▀█ █▄▄ ██▄ █▀▄   █▀▀ █▀▄ █▄█ █▀  ▄█▄ █▄▄   ASUS Control`
 
-	return BannerStyle.Render(rawLogo)
+	return style.Render(rawLogo)
 }
+
+// LogoBanner returns the ASCII art banner with default styling.
+func LogoBanner(compact bool) string {
+	return LogoBannerWithTheme(compact, 0)
+}
+
 
