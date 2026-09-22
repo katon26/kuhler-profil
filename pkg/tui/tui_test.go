@@ -416,3 +416,33 @@ func TestNewTUI(t *testing.T) {
 		t.Fatalf("NewTUI(nil) returned nil program")
 	}
 }
+
+func TestLogoBanner(t *testing.T) {
+	t.Run("Compact banner", func(t *testing.T) {
+		banner := tui.LogoBanner(true)
+		if !strings.Contains(banner, "⚡ KÜHLERPROFIL") {
+			t.Errorf("compact banner missing title: %q", banner)
+		}
+	})
+
+	t.Run("Full banner line count and dimensions", func(t *testing.T) {
+		banner := tui.LogoBanner(false)
+		lines := strings.Split(strings.TrimRight(banner, "\n"), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected 2 lines in full banner, got %d", len(lines))
+		}
+
+		if !strings.Contains(banner, "KÜHLERPROFIL") {
+			t.Errorf("full banner missing subtitle KÜHLERPROFIL")
+		}
+		if !strings.Contains(banner, "ASUS Control") {
+			t.Errorf("full banner missing subtitle ASUS Control")
+		}
+
+		// Ensure 'F' glyph row 2 is present ("█▀ ")
+		if !strings.Contains(lines[1], "█▀ ") {
+			t.Errorf("expected letter 'F' glyph row 2 '█▀ ' in line 2: %q", lines[1])
+		}
+	})
+}
+

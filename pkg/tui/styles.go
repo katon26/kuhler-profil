@@ -188,8 +188,9 @@ func LogoBanner(compact bool) string {
 		return BannerStyle.Render("⚡ KÜHLERPROFIL") + " " + SubtitleStyle.Render(":: ASUS Control Suite")
 	}
 
-	rawLogo := `█▄▀ █ █ █ █ █   █▀▀ █▀█ █▀█ █▀█ █▀▀ █ █   KÜHLERPROFIL
-█ █ █▄█ █▀█ █▄▄ ██▄ █▀▄ █▀▀ █▀▄ █▄█ █ █▄▄ ASUS Control`
+	rawLogo := `█▄▀ █ █ █ █ █   █▀▀ █▀█   █▀█ █▀█ █▀█ █▀▀ ▀█▀ █     KÜHLERPROFIL
+█ █ █▄█ █▀█ █▄▄ ██▄ █▀▄   █▀▀ █▀▄ █▄█ █▀  ▄█▄ █▄▄   ASUS Control`
 
 	return BannerStyle.Render(rawLogo)
 }
+
