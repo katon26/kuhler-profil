@@ -153,34 +153,89 @@ var (
 	HelpDivider = lipgloss.NewStyle().
 			Foreground(ColorBorder).
 			SetString(" │ ")
+
+	// Hover Styles
+	PillSilentHover = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#059669")).
+			Padding(0, 1)
+
+	PillStandardHover = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#0284C7")).
+			Padding(0, 1)
+
+	PillBoostHover = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#DC2626")).
+			Padding(0, 1)
+
+	PillInactiveHover = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.Color("#334155")).
+			Padding(0, 1)
+
+	BadgeHover = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(ColorIndigo).
+			Padding(0, 1)
+
+	CardStyleHover = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorCyan).
+			Padding(0, 1)
 )
 
 // ModePill returns the styled pill representation for a given thermal mode based on active state.
 func ModePill(mode models.ThermalMode, activeMode models.ThermalMode) string {
+	return ModePillWithHover(mode, activeMode, false)
+}
+
+// ModePillWithHover returns the styled pill with optional hover highlight.
+func ModePillWithHover(mode models.ThermalMode, activeMode models.ThermalMode, isHovered bool) string {
 	isActive := mode == activeMode
 	switch mode {
 	case models.ModeSilent:
-		if isActive {
-			return PillSilentActive.Render("● 1: Silent")
+		if isHovered {
+			return PillSilentHover.Render("● 1:Silent")
 		}
-		return PillInactive.Render("○ 1: Silent")
+		if isActive {
+			return PillSilentActive.Render("● 1:Silent")
+		}
+		return PillInactive.Render("○ 1:Silent")
 	case models.ModeStandard:
-		if isActive {
-			return PillStandardActive.Render("● 2: Standard")
+		if isHovered {
+			return PillStandardHover.Render("● 2:Std")
 		}
-		return PillInactive.Render("○ 2: Standard")
+		if isActive {
+			return PillStandardActive.Render("● 2:Std")
+		}
+		return PillInactive.Render("○ 2:Std")
 	case models.ModeBoost:
-		if isActive {
-			return PillBoostActive.Render("● 3: Boost")
+		if isHovered {
+			return PillBoostHover.Render("● 3:Boost")
 		}
-		return PillInactive.Render("○ 3: Boost")
+		if isActive {
+			return PillBoostActive.Render("● 3:Boost")
+		}
+		return PillInactive.Render("○ 3:Boost")
 	default:
-		if isActive {
-			return PillStandardActive.Render(string(mode))
+		label := string(mode)
+		if isHovered {
+			return PillInactiveHover.Render(label)
 		}
-		return PillInactive.Render(string(mode))
+		if isActive {
+			return PillStandardActive.Render(label)
+		}
+		return PillInactive.Render(label)
 	}
 }
+
 
 // Theme defines a color theme for the TUI dashboard header.
 type Theme struct {

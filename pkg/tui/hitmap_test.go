@@ -38,34 +38,37 @@ func TestDetectClickTarget(t *testing.T) {
 	})
 
 	t.Run("Mode Pills in Profile Card", func(t *testing.T) {
-		// modeCard starts at cardWidth + 1
-		targetSilent := tui.DetectClickTarget(44, 13, width, height, hasDualFan)
+		// modeCard starts at cardWidth + 1, pills row is at Y == 14
+		targetSilent := tui.DetectClickTarget(44, 14, width, height, hasDualFan)
 		if targetSilent != tui.TargetSilent {
 			t.Errorf("expected TargetSilent, got %v", targetSilent)
 		}
 
-		targetStd := tui.DetectClickTarget(55, 13, width, height, hasDualFan)
+		targetStd := tui.DetectClickTarget(55, 14, width, height, hasDualFan)
 		if targetStd != tui.TargetStandard {
 			t.Errorf("expected TargetStandard, got %v", targetStd)
 		}
 
-		targetBoost := tui.DetectClickTarget(70, 13, width, height, hasDualFan)
+		targetBoost := tui.DetectClickTarget(70, 14, width, height, hasDualFan)
 		if targetBoost != tui.TargetBoost {
 			t.Errorf("expected TargetBoost, got %v", targetBoost)
 		}
 	})
 
-	t.Run("Governor & Cooldown Badges", func(t *testing.T) {
-		targetGov := tui.DetectClickTarget(46, 15, width, height, hasDualFan)
+	t.Run("Governor & Cooldown Rows", func(t *testing.T) {
+		// Governor row is at Y == 16
+		targetGov := tui.DetectClickTarget(50, 16, width, height, hasDualFan)
 		if targetGov != tui.TargetGovernor {
 			t.Errorf("expected TargetGovernor, got %v", targetGov)
 		}
 
-		targetCD := tui.DetectClickTarget(68, 15, width, height, hasDualFan)
+		// Cooldown row is at Y == 17
+		targetCD := tui.DetectClickTarget(50, 17, width, height, hasDualFan)
 		if targetCD != tui.TargetCooldown {
 			t.Errorf("expected TargetCooldown, got %v", targetCD)
 		}
 	})
+
 
 	t.Run("Compact Mode Hits", func(t *testing.T) {
 		compactW := 60

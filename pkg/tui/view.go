@@ -11,11 +11,16 @@ import (
 
 // RenderDashboard renders the entire KühlerProfil terminal dashboard with the default theme.
 func RenderDashboard(status models.Telemetry, width int, height int) string {
-	return RenderDashboardWithTheme(status, width, height, 0)
+	return RenderDashboardWithHover(status, width, height, 0, TargetNone)
 }
 
 // RenderDashboardWithTheme renders the KühlerProfil terminal dashboard with a specific theme.
 func RenderDashboardWithTheme(status models.Telemetry, width int, height int, themeIndex int) string {
+	return RenderDashboardWithHover(status, width, height, themeIndex, TargetNone)
+}
+
+// RenderDashboardWithHover renders the dashboard with theme and interactive hover highlighting.
+func RenderDashboardWithHover(status models.Telemetry, width int, height int, themeIndex int, hoverTarget ClickTarget) string {
 	if width <= 0 {
 		width = 80
 	}
@@ -27,6 +32,9 @@ func RenderDashboardWithTheme(status models.Telemetry, width int, height int, th
 
 	// 1. Header Section
 	headerTitle := " KühlerProfil ASUS Control "
+	if hoverTarget == TargetLogo {
+		headerTitle = " KühlerProfil [Click to Cycle Theme] "
+	}
 	var header string
 	if isCompact {
 		header = lipgloss.JoinVertical(
@@ -41,7 +49,6 @@ func RenderDashboardWithTheme(status models.Telemetry, width int, height int, th
 		header = lipgloss.JoinVertical(lipgloss.Left, logo, sub, "")
 	}
 
-
 	// 2. Panels
 	cardWidth := width - 4
 	if !isCompact {
@@ -51,50 +58,81 @@ func RenderDashboardWithTheme(status models.Telemetry, width int, height int, th
 		}
 	}
 
-	gaugeInnerWidth := cardWidth - 6
-	if gaugeInnerWidth < 18 {
-		gaugeInnerWidth = 18
-	}
-
 	// Panel A: CPU Thermal
 	thermalTitle := CardHeaderStyle.Render("🔥 THERMAL STATUS")
-	tempGauge := RenderTempGauge(status.CPUTemp, gaugeInnerWidth)
+	statusTag := "NORM"
+	tempColor := ColorEmerald
+	if status.CPUTemp >= 85 {
+		statusTag = "CRIT"
+		tempColor = ColorCrimson
+	} else if status.CPUTemp >= 70 {
+		statusTag = "WARM"
+		tempColor = ColorAmber
+	}
+	tempText := fmt.Sprintf("CPU Package: %5.1f°C [%s]", status.CPUTemp, statusTag)
+	tempBar := RenderProgressBar(status.CPUTemp/100.0, cardWidth-4, tempColor, ColorTrackEmpty, 0.0, "")
 	thermalContent := lipgloss.JoinVertical(
 		lipgloss.Left,
 		thermalTitle,
 		"",
-		fmt.Sprintf("%s %s", MetricLabelStyle.Render("CPU Package:"), tempGauge),
+		lipgloss.NewStyle().Foreground(ColorTextLight).Render(tempText),
+		tempBar,
 	)
 	thermalCard := CardStyle.Width(cardWidth).Render(thermalContent)
 
 	// Panel B: Fan Tachometers
 	fanTitle := CardHeaderStyle.Render("🌀 FAN TACHOMETER")
-	fan1Gauge := RenderFanGauge(status.Fan1RPM, 5500, gaugeInnerWidth)
+	fanPct := int(float64(status.Fan1RPM) / 5500.0 * 100.0)
+	fan1Text := fmt.Sprintf("CPU Fan: %4d RPM (%d%%)", status.Fan1RPM, fanPct)
+	fan1Bar := RenderProgressBar(float64(status.Fan1RPM)/5500.0, cardWidth-4, ColorCyan, ColorTrackEmpty, 0.0, "")
 	var fanRows []string
-	fanRows = append(fanRows, fanTitle, "", fmt.Sprintf("%s %s", MetricLabelStyle.Render("CPU Fan:"), fan1Gauge))
+	fanRows = append(fanRows, fanTitle, "", lipgloss.NewStyle().Foreground(ColorTextLight).Render(fan1Text), fan1Bar)
 	if status.Fan2RPM > 0 {
-		fan2Gauge := RenderFanGauge(status.Fan2RPM, 5500, gaugeInnerWidth)
-		fanRows = append(fanRows, fmt.Sprintf("%s %s", MetricLabelStyle.Render("GPU Fan:"), fan2Gauge))
+		fan2Pct := int(float64(status.Fan2RPM) / 5500.0 * 100.0)
+		fan2Text := fmt.Sprintf("GPU Fan: %4d RPM (%d%%)", status.Fan2RPM, fan2Pct)
+		fan2Bar := RenderProgressBar(float64(status.Fan2RPM)/5500.0, cardWidth-4, ColorCyan, ColorTrackEmpty, 0.0, "")
+		fanRows = append(fanRows, lipgloss.NewStyle().Foreground(ColorTextLight).Render(fan2Text), fan2Bar)
 	}
 	fanCard := CardStyle.Width(cardWidth).Render(lipgloss.JoinVertical(lipgloss.Left, fanRows...))
 
 	// Panel C: Battery & Power
 	batTitle := CardHeaderSecondary.Render("⚡ POWER & BATTERY")
-	batGauge := RenderBatteryGauge(status.BatteryPercent, status.BatteryLimit, status.OnAC, gaugeInnerWidth)
+	if hoverTarget == TargetBattery {
+		batTitle = lipgloss.NewStyle().Bold(true).Foreground(ColorCyan).Render("⚡ POWER & BATTERY [Click to Cap]")
+	}
+	acBadge := "🔋 BAT"
+	if status.OnAC {
+		acBadge = "⚡ AC"
+	}
+	batText := fmt.Sprintf("Charge: %d%%  %s  [Cap: %d%%]", status.BatteryPercent, acBadge, status.BatteryLimit)
+	if hoverTarget == TargetBattery {
+		batText = fmt.Sprintf("Charge: %d%%  %s  %s", status.BatteryPercent, acBadge, BadgeHover.Render(fmt.Sprintf("[Cap: %d%% ↻]", status.BatteryLimit)))
+	}
+	batBar := RenderProgressBar(float64(status.BatteryPercent)/100.0, cardWidth-4, ColorEmerald, ColorTrackEmpty, float64(status.BatteryLimit)/100.0, "│")
+	careText := fmt.Sprintf("Hardware Health: %d%% Cap", status.BatteryLimit)
+
+	batCardStyle := CardStyle
+	if hoverTarget == TargetBattery {
+		batCardStyle = CardStyleHover
+	}
 	batContent := lipgloss.JoinVertical(
 		lipgloss.Left,
 		batTitle,
 		"",
-		fmt.Sprintf("%s %s", MetricLabelStyle.Render("Charge Level:"), batGauge),
+		lipgloss.NewStyle().Foreground(ColorTextLight).Render(batText),
+		batBar,
+		"",
+		MetricLabelStyle.Render(careText),
 	)
-	batCard := CardStyle.Width(cardWidth).Render(batContent)
+	batCard := batCardStyle.Width(cardWidth).Render(batContent)
+
 
 	// Panel D: Thermal Profile & Governor Mode
 	modeTitle := CardHeaderSecondary.Render("🎮 PROFILE & GOVERNOR")
-	silentPill := ModePill(models.ModeSilent, status.ActiveMode)
-	standardPill := ModePill(models.ModeStandard, status.ActiveMode)
-	boostPill := ModePill(models.ModeBoost, status.ActiveMode)
-	pillsRow := lipgloss.JoinHorizontal(lipgloss.Center, silentPill, "  ", standardPill, "  ", boostPill)
+	silentPill := ModePillWithHover(models.ModeSilent, status.ActiveMode, hoverTarget == TargetSilent)
+	standardPill := ModePillWithHover(models.ModeStandard, status.ActiveMode, hoverTarget == TargetStandard)
+	boostPill := ModePillWithHover(models.ModeBoost, status.ActiveMode, hoverTarget == TargetBoost)
+	pillsRow := lipgloss.JoinHorizontal(lipgloss.Left, silentPill, " ", standardPill, " ", boostPill)
 
 	profName := status.ActiveCurveProfile
 	if profName == "" {
@@ -104,19 +142,33 @@ func RenderDashboardWithTheme(status models.Telemetry, width int, height int, th
 
 	var autoGovBadge string
 	if status.AutoMode {
-		autoGovBadge = AutoGovernorOn.Render(fmt.Sprintf("⚡ AUTO-CURVE: %s", strings.ToUpper(profName)))
+		if hoverTarget == TargetGovernor {
+			autoGovBadge = BadgeHover.Render(fmt.Sprintf("⚡ AUTO-CURVE: %s [TOGGLE]", strings.ToUpper(profName)))
+		} else {
+			autoGovBadge = AutoGovernorOn.Render(fmt.Sprintf("⚡ AUTO-CURVE: %s", strings.ToUpper(profName)))
+		}
 	} else {
-		autoGovBadge = AutoGovernorOff.Render(fmt.Sprintf("○ GOVERNOR OFF (%s)", profFormatted))
+		if hoverTarget == TargetGovernor {
+			autoGovBadge = BadgeHover.Render(fmt.Sprintf("○ GOVERNOR: OFF (%s) [TOGGLE]", profFormatted))
+		} else {
+			autoGovBadge = AutoGovernorOff.Render(fmt.Sprintf("○ GOVERNOR: OFF (%s)", profFormatted))
+		}
 	}
 
 	cdMode := status.CooldownMode
 	if cdMode == "" {
 		cdMode = models.CooldownKick
 	}
-	cdBadge := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("39")).
-		Bold(true).
-		Render(fmt.Sprintf("❄ COOLDOWN: %s", strings.ToUpper(string(cdMode))))
+	var cdBadge string
+	cdText := fmt.Sprintf("❄ COOLDOWN: %s", strings.ToUpper(string(cdMode)))
+	if hoverTarget == TargetCooldown {
+		cdBadge = BadgeHover.Render(cdText + " [ACTIVATE]")
+	} else {
+		cdBadge = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")).
+			Bold(true).
+			Render(cdText)
+	}
 
 	modeContent := lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -124,9 +176,11 @@ func RenderDashboardWithTheme(status models.Telemetry, width int, height int, th
 		"",
 		pillsRow,
 		"",
-		lipgloss.JoinHorizontal(lipgloss.Center, autoGovBadge, "  ", cdBadge),
+		autoGovBadge,
+		cdBadge,
 	)
 	modeCard := CardStyle.Width(cardWidth).Render(modeContent)
+
 
 	// 3. Assemble Layout
 	var body string

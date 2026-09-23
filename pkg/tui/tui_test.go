@@ -479,7 +479,7 @@ func TestModelMouseInteraction(t *testing.T) {
 	// 2. Mouse click on Silent mode pill
 	clickSilent := tea.MouseMsg{
 		X:      44,
-		Y:      13,
+		Y:      14,
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	}
@@ -492,7 +492,7 @@ func TestModelMouseInteraction(t *testing.T) {
 	// 3. Mouse click on Standard mode pill
 	clickStd := tea.MouseMsg{
 		X:      55,
-		Y:      13,
+		Y:      14,
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	}
@@ -505,7 +505,7 @@ func TestModelMouseInteraction(t *testing.T) {
 	// 4. Mouse click on Boost mode pill
 	clickBoost := tea.MouseMsg{
 		X:      70,
-		Y:      13,
+		Y:      14,
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	}
@@ -531,7 +531,7 @@ func TestModelMouseInteraction(t *testing.T) {
 	// 6. Mouse click on Governor badge toggles governor
 	clickGov := tea.MouseMsg{
 		X:      46,
-		Y:      15,
+		Y:      16,
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	}
@@ -544,7 +544,7 @@ func TestModelMouseInteraction(t *testing.T) {
 	// 7. Mouse click on Cooldown badge activates cooldown
 	clickCD := tea.MouseMsg{
 		X:      68,
-		Y:      15,
+		Y:      17,
 		Button: tea.MouseButtonLeft,
 		Action: tea.MouseActionPress,
 	}

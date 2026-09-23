@@ -47,10 +47,11 @@ func DetectClickTarget(x, y int, width, height int, hasDualFan bool) ClickTarget
 		cardTotalWidth := cardWidth + 2 // card border (1 left, 1 right)
 
 		headerH := 4
-		row1H := 5
+		row1H := 6
 		if hasDualFan {
-			row1H = 6
+			row1H = 8
 		}
+
 
 		// Row 1: Thermal & Fan Cards
 		if y >= headerH && y < headerH+row1H {
@@ -61,7 +62,7 @@ func DetectClickTarget(x, y int, width, height int, hasDualFan bool) ClickTarget
 
 		// Row 2: Battery & Profile Cards
 		row2Y := headerH + row1H + 1
-		row2H := 7
+		row2H := 8
 		if y >= row2Y && y < row2Y+row2H {
 			// Left Card: Battery
 			if x >= 0 && x < cardTotalWidth {
@@ -71,7 +72,7 @@ func DetectClickTarget(x, y int, width, height int, hasDualFan bool) ClickTarget
 			// Right Card: Mode & Governor
 			if x >= cardTotalWidth && x < width {
 				relX := x - cardTotalWidth
-				// Pills Row: Y == row2Y + 3
+				// Pills Row: Y == row2Y + 3 (Line 14 in 80-col)
 				if y == row2Y+3 {
 					if relX < cardTotalWidth/3 {
 						return TargetSilent
@@ -81,13 +82,13 @@ func DetectClickTarget(x, y int, width, height int, hasDualFan bool) ClickTarget
 						return TargetBoost
 					}
 				}
-				// Badges Row: Y == row2Y + 5
+				// Governor Row: Y == row2Y + 5 (Line 16 in 80-col)
 				if y == row2Y+5 {
-					if relX < cardTotalWidth/2 {
-						return TargetGovernor
-					} else {
-						return TargetCooldown
-					}
+					return TargetGovernor
+				}
+				// Cooldown Row: Y == row2Y + 6 (Line 17 in 80-col)
+				if y == row2Y+6 {
+					return TargetCooldown
 				}
 			}
 		}
@@ -126,8 +127,8 @@ func DetectClickTarget(x, y int, width, height int, hasDualFan bool) ClickTarget
 	}
 	currY += 5
 
-	// Card 4: Mode & Governor (height: 7)
-	modeH := 7
+	// Card 4: Mode & Governor (height: 8)
+	modeH := 8
 	if y >= currY && y < currY+modeH {
 		if y == currY+3 {
 			if x < width/3 {
@@ -139,13 +140,13 @@ func DetectClickTarget(x, y int, width, height int, hasDualFan bool) ClickTarget
 			}
 		}
 		if y == currY+5 {
-			if x < width/2 {
-				return TargetGovernor
-			} else {
-				return TargetCooldown
-			}
+			return TargetGovernor
+		}
+		if y == currY+6 {
+			return TargetCooldown
 		}
 	}
 
 	return TargetNone
 }
+

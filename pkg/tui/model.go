@@ -46,9 +46,11 @@ type Model struct {
 	connected       bool
 	quitting        bool
 	themeIndex      int
+	hoverTarget     ClickTarget
 	sigChan         <-chan models.Telemetry
 	sigCleanup      func()
 }
+
 
 // NewModel creates an initialized Bubbletea Model.
 func NewModel(client *dbusapi.DBusClient) Model {
@@ -221,12 +223,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.MouseMsg:
+		target := DetectClickTarget(msg.X, msg.Y, m.width, m.height, m.telemetry.Fan2RPM > 0)
+
+		// 1. Debounce mouse motion: only re-render when hovered element changes
+		if msg.Action == tea.MouseActionMotion {
+			if target != m.hoverTarget {
+				m.hoverTarget = target
+				return m, nil
+			}
+			return m, nil
+		}
+
+		// 2. Click handling
 		isLeftClick := (msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress) || msg.Type == tea.MouseLeft
 		if !isLeftClick {
 			return m, nil
 		}
 
-		target := DetectClickTarget(msg.X, msg.Y, m.width, m.height, m.telemetry.Fan2RPM > 0)
 		switch target {
 		case TargetLogo:
 			m.themeIndex = (m.themeIndex + 1) % len(AvailableThemes)
@@ -314,7 +327,8 @@ func (m Model) View() string {
 		return "Exiting KühlerProfil TUI. Goodbye!\n"
 	}
 
-	dashboard := RenderDashboardWithTheme(m.telemetry, m.width, m.height, m.themeIndex)
+	dashboard := RenderDashboardWithHover(m.telemetry, m.width, m.height, m.themeIndex, m.hoverTarget)
+
 
 
 	if len(m.statusMsg) > 0 {
