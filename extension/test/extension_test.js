@@ -401,6 +401,33 @@ runTest('prefs.js implements About page with author links, version pill, QR coff
     assert(fs.existsSync(path.join(srcDir, 'github-symbolic.svg')), 'github-symbolic.svg must exist in src/');
 });
 
+
+
+// 24. GNOME Shell 51 Breaking Changes: St.BoxLayout vertical property removal (gjs.guide)
+runTest('GNOME 51 migration: createBoxLayout replaces deprecated vertical property with orientation', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('export function createBoxLayout'), 'extension.js must export createBoxLayout helper');
+    assert(code.includes('Clutter.Orientation'), 'createBoxLayout must reference Clutter.Orientation');
+    assert(code.includes("'orientation' in St.BoxLayout.prototype"), 'createBoxLayout must inspect orientation in St.BoxLayout.prototype');
+
+    // Ensure no raw "new St.BoxLayout({ ... vertical" calls remain outside createBoxLayout
+    const lines = code.split('\n');
+    let insideCreateBoxLayout = false;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.includes('function createBoxLayout')) {
+            insideCreateBoxLayout = true;
+        }
+        if (insideCreateBoxLayout && line.includes('return new St.BoxLayout')) {
+            insideCreateBoxLayout = false;
+            continue;
+        }
+        if (!insideCreateBoxLayout) {
+            assert(!line.includes('new St.BoxLayout'), `Line ${i + 1} must use createBoxLayout instead of new St.BoxLayout to prevent GNOME 51 crash`);
+        }
+    }
+});
+
 console.log(`\nAll ${passedTests}/${totalTests} extension tests passed successfully! ✨`);
 
 

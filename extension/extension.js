@@ -106,6 +106,31 @@ export function getSafeBus() {
 }
 
 /**
+ * Creates an St.BoxLayout compatible with both GNOME 45–47 (vertical: boolean)
+ * and GNOME 48–51+ (orientation: Clutter.Orientation).
+ *
+ * Per https://gjs.guide/extensions/upgrading/gnome-shell-51.html, the legacy
+ * `vertical` property on St.BoxLayout was deprecated in GNOME 48 and completely
+ * removed in GNOME 51.
+ */
+export function createBoxLayout(params = {}) {
+    const isVertical = params.vertical ?? (params.orientation === Clutter.Orientation?.VERTICAL);
+    const boxParams = { ...params };
+    delete boxParams.vertical;
+    delete boxParams.orientation;
+
+    if ('orientation' in St.BoxLayout.prototype && Clutter.Orientation) {
+        boxParams.orientation = isVertical
+            ? Clutter.Orientation.VERTICAL
+            : Clutter.Orientation.HORIZONTAL;
+    } else {
+        boxParams.vertical = Boolean(isVertical);
+    }
+
+    return new St.BoxLayout(boxParams);
+}
+
+/**
  * Thermal modes, cooldown options, and curve profiles.
  * Names and descriptions use dynamic getters so no gettext calls execute at module import.
  */
@@ -614,7 +639,6 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._cooldownButtons = new Map();
         this._syncingAutoSwitch = false;
         this._unsubscribe = null;
-
         this._buildMenu();
 
         // Connect main toggle click to cycle mode or toggle auto
@@ -695,20 +719,20 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             can_focus: false,
         });
 
-        const gridBox = new St.BoxLayout({
+        const gridBox = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-telemetry-grid',
             x_expand: true,
         });
 
         // Row 1: CPU Temp & Battery
-        const row1 = new St.BoxLayout({
+        const row1 = createBoxLayout({
             vertical: false,
             style_class: 'kuhlerprofil-telemetry-row',
             x_expand: true,
         });
 
-        this._tempCard = new St.BoxLayout({
+        this._tempCard = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
@@ -724,7 +748,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._tempCard.add_child(tempLabel);
         this._tempCard.add_child(this._tempValue);
 
-        this._batCard = new St.BoxLayout({
+        this._batCard = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
@@ -744,13 +768,13 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         row1.add_child(this._batCard);
 
         // Row 2: Fan 1 & Fan 2 RPM
-        const row2 = new St.BoxLayout({
+        const row2 = createBoxLayout({
             vertical: false,
             style_class: 'kuhlerprofil-telemetry-row',
             x_expand: true,
         });
 
-        this._fan1Card = new St.BoxLayout({
+        this._fan1Card = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
@@ -766,7 +790,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._fan1Card.add_child(fan1Label);
         this._fan1Card.add_child(this._fan1Value);
 
-        this._fan2Card = new St.BoxLayout({
+        this._fan2Card = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-metric-card',
             x_expand: true,
@@ -797,7 +821,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             can_focus: false,
         });
 
-        const container = new St.BoxLayout({
+        const container = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-section',
             x_expand: true,
@@ -809,7 +833,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         });
         container.add_child(title);
 
-        const btnGroup = new St.BoxLayout({
+        const btnGroup = createBoxLayout({
             vertical: false,
             style_class: 'kuhlerprofil-button-group',
             x_expand: true,
@@ -869,13 +893,13 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             can_focus: false,
         });
 
-        const container = new St.BoxLayout({
+        const container = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-section',
             x_expand: true,
         });
 
-        const headerBox = new St.BoxLayout({
+        const headerBox = createBoxLayout({
             vertical: false,
             x_expand: true,
         });
@@ -894,7 +918,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         headerBox.add_child(this._hwCurveBadge);
         container.add_child(headerBox);
 
-        const btnGroup = new St.BoxLayout({
+        const btnGroup = createBoxLayout({
             vertical: false,
             style_class: 'kuhlerprofil-button-group',
             x_expand: true,
@@ -932,13 +956,13 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             can_focus: false,
         });
 
-        const container = new St.BoxLayout({
+        const container = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-section',
             x_expand: true,
         });
 
-        const headerBox = new St.BoxLayout({
+        const headerBox = createBoxLayout({
             vertical: false,
             x_expand: true,
         });
@@ -951,7 +975,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         headerBox.add_child(title);
         container.add_child(headerBox);
 
-        const btnGroup = new St.BoxLayout({
+        const btnGroup = createBoxLayout({
             vertical: false,
             style_class: 'kuhlerprofil-button-group',
             x_expand: true,
@@ -989,7 +1013,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             can_focus: false,
         });
 
-        const container = new St.BoxLayout({
+        const container = createBoxLayout({
             vertical: true,
             style_class: 'kuhlerprofil-section',
             x_expand: true,
@@ -1001,7 +1025,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         });
         container.add_child(title);
 
-        const btnGroup = new St.BoxLayout({
+        const btnGroup = createBoxLayout({
             vertical: false,
             style_class: 'kuhlerprofil-button-group',
             x_expand: true,
@@ -1040,7 +1064,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             can_focus: true,
         });
 
-        const box = new St.BoxLayout({
+        const box = createBoxLayout({
             vertical: false,
             style_class: 'kuhlerprofil-status-bar',
             x_expand: true,
