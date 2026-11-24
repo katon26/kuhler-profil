@@ -12,9 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 * Support for **GNOME Shell 51** (`"51"`) in extension `metadata.json`, comments, and automated test suite.
 * Bumped extension version to 3 (`0.1.1`).
+* Quick Settings `PopupScrollSection` with `St.ScrollView` and dynamic screen-height clamping to ensure smooth scrolling and prevent bottom menu clipping on 1080p and fractional-scaled displays.
 
 ### Fixed
 * Resolved `Error: No property vertical on StBoxLayout` on GNOME Shell 51 by introducing `createBoxLayout()` to dynamically use `orientation: Clutter.Orientation` while preserving backwards compatibility with GNOME 45–50.
+* Fixed Quick Settings popup menu overflowing off screen and being unscrollable. All menu items and actions are now cleanly wrapped with automatic vertical scrollbars, `-st-vfade` edge indicators, and header scroll forwarding.
 
 ---
 

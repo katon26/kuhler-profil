@@ -617,6 +617,32 @@ export class KuhlerProfilDBusClient {
 export const KoolThingDBusClient = KuhlerProfilDBusClient;
 
 /**
+ * Scrollable section wrapper for QuickToggleMenu to prevent menu clipping
+ * and enable smooth mouse wheel and touch scrolling across all display scales.
+ */
+export class PopupScrollSection extends PopupMenu.PopupMenuSection {
+    constructor() {
+        super();
+        this.box.x_expand = true;
+        this.scrollView = new St.ScrollView({
+            style_class: 'kuhlerprofil-scroll-view vfade',
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            hscrollbar_policy: St.PolicyType.NEVER,
+            enable_mouse_scrolling: true,
+            enable_touch_scrolling: true,
+            overlay_scrollbars: true,
+            x_expand: true,
+            y_expand: true,
+            child: this.box,
+        });
+        this.actor = this.scrollView;
+        this.actor._delegate = this;
+        this.actor.clip_to_allocation = true;
+        this.isOpen = true;
+    }
+}
+
+/**
  * KühlerProfil Quick Menu Toggle for GNOME 45+ Quick Settings panel.
  */
 export const KuhlerProfilToggle = GObject.registerClass(
@@ -639,6 +665,8 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._cooldownButtons = new Map();
         this._syncingAutoSwitch = false;
         this._unsubscribe = null;
+        this._scrollSection = null;
+
         this._buildMenu();
 
         // Connect main toggle click to cycle mode or toggle auto
@@ -679,41 +707,73 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         });
         this.menu.addHeaderSuffix(headerSettingsBtn);
 
+        // Scrollable container for menu sections to prevent screen clipping
+        this._scrollSection = new PopupScrollSection();
+        this.menu.addMenuItem(this._scrollSection);
+
         // Telemetry Section
-        this._buildTelemetrySection();
+        this._buildTelemetrySection(this._scrollSection);
 
         // Separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._scrollSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Thermal Profile Section
-        this._buildThermalModeSection();
+        this._buildThermalModeSection(this._scrollSection);
 
         // Separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._scrollSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Dynamic Auto Governor & Fan Curve Section
-        this._buildCurveProfileSection();
+        this._buildCurveProfileSection(this._scrollSection);
 
         // Separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._scrollSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Zero-RPM Cooldown Mode Section
-        this._buildCooldownSection();
+        this._buildCooldownSection(this._scrollSection);
 
         // Separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._scrollSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Battery Care Limit Section
-        this._buildBatteryLimitSection();
+        this._buildBatteryLimitSection(this._scrollSection);
 
         // Separator
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._scrollSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         // Status & Connection Footer with Preferences Action
-        this._buildStatusFooter();
+        this._buildStatusFooter(this._scrollSection);
+
+        // Dynamic screen boundary calibration
+        this._updateMaxHeight();
+        this.menu.connect('open-state-changed', (m, isOpen) => {
+            if (isOpen) {
+                this._updateMaxHeight();
+            }
+        });
+
+        // Forward scroll events from header to scrollable section
+        if (this.menu._header) {
+            this.menu._header.reactive = true;
+            this.menu._header.connect('scroll-event', (actor, event) => {
+                return this._scrollSection.scrollView.event(event, false);
+            });
+        }
     }
 
-    _buildTelemetrySection() {
+    _updateMaxHeight() {
+        if (!this._scrollSection?.scrollView) return;
+        try {
+            const monitor = Main.layoutManager.findMonitorForActor(this.menu.actor) ??
+                Main.layoutManager.primaryMonitor;
+            if (monitor && monitor.height) {
+                const maxAllowed = Math.min(480, Math.max(260, monitor.height - 380));
+                this._scrollSection.scrollView.style = `max-height: ${maxAllowed}px;`;
+            }
+        } catch (_) {}
+    }
+
+    _buildTelemetrySection(target = this._scrollSection || this.menu) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -812,10 +872,10 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         gridBox.add_child(row1);
         gridBox.add_child(row2);
         item.add_child(gridBox);
-        this.menu.addMenuItem(item);
+        target.addMenuItem(item);
     }
 
-    _buildThermalModeSection() {
+    _buildThermalModeSection(target = this._scrollSection || this.menu) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -862,10 +922,10 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         container.add_child(btnGroup);
         item.add_child(container);
-        this.menu.addMenuItem(item);
+        target.addMenuItem(item);
     }
 
-    _buildCurveProfileSection() {
+    _buildCurveProfileSection(target = this._scrollSection || this.menu) {
         // Auto Governor Switch
         this._autoSwitch = new PopupMenu.PopupSwitchMenuItem(
             safeTranslate('Dynamic Auto-Governor'),
@@ -885,7 +945,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             });
         });
 
-        this.menu.addMenuItem(this._autoSwitch);
+        target.addMenuItem(this._autoSwitch);
 
         // Curve Profile Selectors
         const item = new PopupMenu.PopupBaseMenuItem({
@@ -947,10 +1007,10 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         container.add_child(btnGroup);
         item.add_child(container);
-        this.menu.addMenuItem(item);
+        target.addMenuItem(item);
     }
 
-    _buildCooldownSection() {
+    _buildCooldownSection(target = this._scrollSection || this.menu) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -1004,10 +1064,10 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         container.add_child(btnGroup);
         item.add_child(container);
-        this.menu.addMenuItem(item);
+        target.addMenuItem(item);
     }
 
-    _buildBatteryLimitSection() {
+    _buildBatteryLimitSection(target = this._scrollSection || this.menu) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -1054,10 +1114,10 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
 
         container.add_child(btnGroup);
         item.add_child(container);
-        this.menu.addMenuItem(item);
+        target.addMenuItem(item);
     }
 
-    _buildStatusFooter() {
+    _buildStatusFooter(target = this._scrollSection || this.menu) {
         // Daemon connection status row
         const statusItem = new PopupMenu.PopupBaseMenuItem({
             reactive: true,
@@ -1083,17 +1143,30 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
             this._client.getStatus().catch(() => {});
         });
 
-        this.menu.addMenuItem(statusItem);
+        target.addMenuItem(statusItem);
 
         // Preferences action button
-        this.menu.addAction(safeTranslate('Preferences…'), () => {
-            try {
-                Main.panel.closeQuickSettings();
-                this._extension.openPreferences();
-            } catch (err) {
-                console.error(`[KühlerProfil] Failed to open preferences: ${err}`);
-            }
-        });
+        if (typeof target.addAction === 'function') {
+            target.addAction(safeTranslate('Preferences…'), () => {
+                try {
+                    Main.panel.closeQuickSettings();
+                    this._extension.openPreferences();
+                } catch (err) {
+                    console.error(`[KühlerProfil] Failed to open preferences: ${err}`);
+                }
+            });
+        } else {
+            const prefItem = new PopupMenu.PopupMenuItem(safeTranslate('Preferences…'));
+            prefItem.connect('activate', () => {
+                try {
+                    Main.panel.closeQuickSettings();
+                    this._extension.openPreferences();
+                } catch (err) {
+                    console.error(`[KühlerProfil] Failed to open preferences: ${err}`);
+                }
+            });
+            target.addMenuItem(prefItem);
+        }
     }
 
     _onMainToggleClicked() {
@@ -1261,6 +1334,7 @@ class KuhlerProfilToggle extends QuickSettings.QuickMenuToggle {
         this._batteryButtons.clear();
         this._curveButtons.clear();
         this._cooldownButtons.clear();
+        this._scrollSection = null;
         if (this.menu) {
             this.menu.destroy();
         }

@@ -179,3 +179,15 @@
 .koolthing-status-error {
     color: #e01b24;
 }
+
+/* Scrollable Container for Quick Settings Menu */
+.kuhlerprofil-scroll-view,
+.koolthing-scroll-view {
+    max-height: 440px;
+    -st-vfade-offset: 16px;
+}
+
+.kuhlerprofil-scroll-view StScrollBar,
+.koolthing-scroll-view StScrollBar {
+    padding: 0 2px;
+}

@@ -45,6 +45,9 @@ runTest('metadata.json exists and is valid JSON', () => {
     assert(metadata['shell-version'].includes('46'), 'shell-version must support GNOME 46');
     assert(metadata['shell-version'].includes('47'), 'shell-version must support GNOME 47');
     assert(metadata['shell-version'].includes('48'), 'shell-version must support GNOME 48');
+    assert(metadata['shell-version'].includes('49'), 'shell-version must support GNOME 49');
+    assert(metadata['shell-version'].includes('50'), 'shell-version must support GNOME 50');
+    assert(metadata['shell-version'].includes('51'), 'shell-version must support GNOME 51');
     assert(metadata.description && metadata.description.length > 10, 'Description must be present');
 });
 
@@ -401,8 +404,6 @@ runTest('prefs.js implements About page with author links, version pill, QR coff
     assert(fs.existsSync(path.join(srcDir, 'github-symbolic.svg')), 'github-symbolic.svg must exist in src/');
 });
 
-
-
 // 24. GNOME Shell 51 Breaking Changes: St.BoxLayout vertical property removal (gjs.guide)
 runTest('GNOME 51 migration: createBoxLayout replaces deprecated vertical property with orientation', () => {
     const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
@@ -428,6 +429,25 @@ runTest('GNOME 51 migration: createBoxLayout replaces deprecated vertical proper
     }
 });
 
-console.log(`\nAll ${passedTests}/${totalTests} extension tests passed successfully! ✨`);
+// 25. Quick Settings Scrollable Menu UX: PopupScrollSection prevents screen overflow
+runTest('Quick Settings popup uses PopupScrollSection with St.ScrollView to prevent screen clipping', () => {
+    const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
+    assert(code.includes('export class PopupScrollSection extends PopupMenu.PopupMenuSection'), 'Must define PopupScrollSection');
+    assert(code.includes('new St.ScrollView'), 'PopupScrollSection must instantiate St.ScrollView');
+    assert(code.includes('vscrollbar_policy: St.PolicyType.AUTOMATIC'), 'ScrollView must use AUTOMATIC vertical scrollbar policy');
+    assert(code.includes('enable_mouse_scrolling: true'), 'ScrollView must enable mouse wheel scrolling');
+    assert(code.includes('this._updateMaxHeight()'), 'QuickMenuToggle must compute dynamic screen max-height');
+    assert(code.includes('this._buildTelemetrySection(this._scrollSection)'), 'Telemetry section must be added to scroll section');
+    assert(code.includes('this._buildThermalModeSection(this._scrollSection)'), 'Thermal mode section must be added to scroll section');
+    assert(code.includes('this._buildCurveProfileSection(this._scrollSection)'), 'Curve profile section must be added to scroll section');
+    assert(code.includes('this._buildCooldownSection(this._scrollSection)'), 'Cooldown section must be added to scroll section');
+    assert(code.includes('this._buildBatteryLimitSection(this._scrollSection)'), 'Battery limit section must be added to scroll section');
+    assert(code.includes('this._buildStatusFooter(this._scrollSection)'), 'Status footer must be added to scroll section');
 
+    const css = fs.readFileSync(path.join(EXTENSION_DIR, 'stylesheet.css'), 'utf8');
+    assert(css.includes('.kuhlerprofil-scroll-view'), 'stylesheet.css must define .kuhlerprofil-scroll-view');
+    assert(css.includes('max-height:'), 'stylesheet.css must specify max-height for .kuhlerprofil-scroll-view');
+});
+
+console.log(`\nAll ${passedTests}/${totalTests} extension tests passed successfully! ✨`);
 
