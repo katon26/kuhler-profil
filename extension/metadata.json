@@ -8,10 +8,11 @@
     "47",
     "48",
     "49",
-    "50"
+    "50",
+    "51"
   ],
   "url": "https://github.com/katon26/kuhler-profil",
   "gettext-domain": "kuhlerprofil",
-  "version": 2,
-  "version-name": "0.1.0"
+  "version": 3,
+  "version-name": "0.1.1"
 }

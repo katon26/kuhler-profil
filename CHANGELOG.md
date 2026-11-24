@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] - 2026-11-24
+
+### Added
+* Support for **GNOME Shell 51** (`"51"`) in extension `metadata.json`, comments, and automated test suite.
+* Bumped extension version to 3 (`0.1.1`).
+
+---
+
 ## [0.1.0] - 2026-09-15
 
 ### Major Architectural Highlights

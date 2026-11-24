@@ -4,7 +4,7 @@
  * switching, dynamic fan curves, zero-RPM cooldown assistance, and battery health
  * charge threshold control over Linux D-Bus IPC.
  *
- * Supported GNOME Shell Versions: 45, 46, 47, 48, 49, 50
+ * Supported GNOME Shell Versions: 45, 46, 47, 48, 49, 50, 51
  */
 
 import Atk from 'gi://Atk';

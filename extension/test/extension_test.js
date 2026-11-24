@@ -244,7 +244,7 @@ runTest('Cooldown modes list covers Zero-RPM specifications (kick, decay, off)',
     assert(code.includes('_buildCooldownSection'), 'extension.js must define _buildCooldownSection');
 });
 
-// 10. HIG & Lifecycle: Zero top-level gettext invocations (prevents module import crashes in GNOME 45-50)
+// 10. HIG & Lifecycle: Zero top-level gettext invocations (prevents module import crashes in GNOME 45-51)
 runTest('No raw top-level gettext calls that crash during module import', () => {
     const code = fs.readFileSync(path.join(EXTENSION_DIR, 'extension.js'), 'utf8');
     // Ensure THERMAL_MODES and COOLDOWN_MODES use getters/safeTranslate, NOT raw static _('...')
@@ -303,8 +303,8 @@ runTest('prefs.js exists and exports ExtensionPreferences subclass with Libadwai
     assert(code.includes('Adw.SwitchRow'), 'Must use Adw.SwitchRow');
 });
 
-// 15. Installation & Packaging: install.sh handles prefs.js and metadata.json has version 2
-runTest('install.sh and metadata.json properly include prefs.js and GNOME 45-50 support', () => {
+// 15. Installation & Packaging: install.sh handles prefs.js and metadata.json has version 3
+runTest('install.sh and metadata.json properly include prefs.js and GNOME 45-51 support', () => {
     const installPath = path.join(EXTENSION_DIR, 'install.sh');
     const installCode = fs.readFileSync(installPath, 'utf8');
     assert(installCode.includes('prefs.js'), 'install.sh must copy and pack prefs.js');
@@ -313,7 +313,8 @@ runTest('install.sh and metadata.json properly include prefs.js and GNOME 45-50 
     const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
     assert(meta['shell-version'].includes('49'), 'metadata.json must support GNOME 49');
     assert(meta['shell-version'].includes('50'), 'metadata.json must support GNOME 50');
-    assert.equal(meta.version, 2, 'Extension version must be 2');
+    assert(meta['shell-version'].includes('51'), 'metadata.json must support GNOME 51');
+    assert.equal(meta.version, 3, 'Extension version must be 3');
 });
 
 // 16. D-Bus Resilience: getSafeBus handles missing bus gracefully without throwing IOError
